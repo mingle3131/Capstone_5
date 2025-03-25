@@ -25,17 +25,19 @@ contract escrow is Ownable{
     constructor() Ownable(msg.sender) {}
 
     //계좌 잔액 반환
-    function getBalance() public payable {
-
+    function getBalance() public view returns (uint256) {
+        return address(this).balance;
+        // 이함수는 eth 가 아니라 wei 양을 반환함 ( 1 wei = 10^-18 eth)
+        // 프론트엔드에서 표시할거면 따로 바꿔야함
     }
-    //관리자 지갑으로 입금하는 함수
+    //컨트랙트로 입금하는 함수
     function EscrowDeposit(uint256 amount) external payable
     {
         require(msg.value == amount, "Send required ETH");
         deposits[msg.sender] += msg.value;
         emit Deposited(msg.sender, msg.value);
     }
-    //거래성사시 관리자 지갑에서 판매자에게 송금하는함수(보안 중요함)
+    //거래성사시 컨트랙트에서 판매자에게 송금하는함수(보안 중요함)
     function EscrowWithdraw(address to, uint256 amount) external payable 
     {
 
