@@ -2,7 +2,13 @@
 
 pragma solidity ^0.8.25;
 
-contract escrow{
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
+
+
+
+
+contract escrow is Ownable{
     address public OwnerAddress;//에스크로 관리자 지갑
 
     mapping(address => uint256) public deposits; //입금기록
@@ -10,13 +16,18 @@ contract escrow{
     event Deposited(address indexed from, uint256 amount);// 입금 이벤트 로그 (나중에 조회하기위함)
     event Withdrawed(address indexed to, uint256 amount);// 출금 이벤트 로그 
     event Refunded(address indexed to, uint256 amount);// 환불 이벤트 로그
-    constructor() 
-    {
-        OwnerAddress = msg.sender; // 내 지갑주소
+
+// 아비트럼에서는 이더리움/원화 환율을 못가져옴 -> 이더/달러 달러/원화 가져와서 이중으로 환산함
+    AggregatorV3Interface internal ethUsdFeed; //이더리움 / 달러 환율
+    AggregatorV3Interface internal usdKrwFeed; //달러 / 원화 환율 
+
+    
+    constructor() Ownable(msg.sender) {}
+
+    //계좌 잔액 반환
+    function getBalance() public payable {
+
     }
-
-
-
     //관리자 지갑으로 입금하는 함수
     function EscrowDeposit(uint256 amount) external payable
     {
@@ -29,7 +40,7 @@ contract escrow{
     {
 
     }
-    //거래불발시 에치금 환불해주는함수 (보안중요)  2414
+    //거래불발시 에치금 환불해주는함수 (보안중요)  
     function EscrowRefund(address to, uint256 amount) external payable
     {
 
