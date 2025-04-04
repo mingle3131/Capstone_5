@@ -4,7 +4,7 @@ pragma solidity ^0.8.25;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
-
+import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 
 
@@ -13,9 +13,10 @@ contract escrow is Ownable{
     mapping(uint64 => mapping(address => uint256)) public bidsMap;  // 거래번호 -> 입찰자 -> 입찰 보증금 
     mapping(address => uint256) public userBalance; //사용자가 현재 사용가능한 금액
     mapping(uint64 => address[]) bidderList; // 거래번호별 입찰자목록 저장
-    uint256 proceeds = 0; //경매 낙찰로 컨트랙트에 귀속되는 금액
+    uint256 proceeds = 0; //경매 낙찰로 컨트랙트에 귀속된 금액
     enum ActionType { DEPOSIT, WITHDRAW, REFUND, BID }
-    
+
+    using ECDSA for bytes32;
     
     // 경매 이벤트 로그 (나중에 조회하기위함)
     event BidEvents(address indexed from, uint256 amount, uint256 timestamp, ActionType action);
@@ -30,6 +31,24 @@ contract escrow is Ownable{
 
 
     constructor() Ownable(msg.sender) {}
+
+
+    function getEthSignedMessageHash(bytes32 messageHash) public pure returns (bytes32) 
+    {
+    return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
+    }
+
+    //서명 확인용 함수 (가스 서버 부담위함)
+    function verifySignature(uint64 tradeNum, uint256 amount, address user, bytes memory signature) public pure returns (bool) 
+    {
+        bytes32 hash = keccak256(abi.encodePacked(tradeNum, amount, user));
+        bytes32 ethSignedHash = getEthSignedMessageHash(hash);
+        address recovered = ECDSA.recover(ethSignedHash, signature);
+
+
+    return recovered == user;
+    }
+
 
     //계좌 잔액 반환
     function getBalance() public view returns (uint256) 
@@ -54,23 +73,53 @@ contract escrow is Ownable{
 
 
     //경매 입찰 함수
-    function Bid(uint64 tradeNum, uint256 amount, address bidder) external
+    function Bid(uint64 tradeNum, uint256 amount, address bidder, bytes memory signature) external
     {
-        require(amount < userBalance[bidder], "Not enough balance");
+        require(verifySignature(tradeNum, amount, bidder, signature), "Invalid signature");
+        require(amount <= userBalance[bidder], "Not enough balance");
+        require(bidsMap[tradeNum][bidder] == 0, "Already bid"); //입찰은 거래당 1회만 가능
         bidsMap[tradeNum][bidder] += amount;
-        userBalance[bidder] -=amount;
+        userBalance[bidder] -= amount;
         bidderList[tradeNum].push(bidder);
         emit BidEvents(bidder, amount, block.timestamp, ActionType.BID);
     }
 
 
-    //거래성사시 에치금 환불해주는함수
-    function EscrowRefund(uint256 amount, uint64 tradeNum, address winner) external 
-    {
-        proceeds += amount;
-        
+    //거래성사시 예치금 환불해주는함수
+function EscrowRefund(uint64 tradeNum) external onlyOwner 
+{
+    uint256 highestBid = 0;
+    address winner;
+    address[] memory bidders = bidderList[tradeNum];
 
+    for (uint256 i = 0; i < bidders.length; i++) {
+        address bidder = bidders[i];
+        uint256 bidAmount = bidsMap[tradeNum][bidder];
+
+        if (bidAmount > highestBid) {
+            highestBid = bidAmount;
+            winner = bidder;
+        }
     }
+
+    // proceeds에 최고 입찰액 추가
+    proceeds += highestBid;
+
+    // 나머지 입찰자들에게 환불 (보안 검토 필요)
+    for (uint256 i = 0; i < bidders.length; i++) {
+        address bidder = bidders[i];
+        if (bidder != winner) {
+            uint256 refundAmount = bidsMap[tradeNum][bidder];
+            userBalance[bidder] += refundAmount;
+        }
+
+        // 입찰 기록 초기화
+        bidsMap[tradeNum][bidder] = 0;
+    }
+
+    emit Transactions(winner, highestBid, block.timestamp, ActionType.WITHDRAW);
+}
+
 
     //예치금액 출금하는함수
     function Withdraw(uint256 amount, address to) external
@@ -78,13 +127,14 @@ contract escrow is Ownable{
 
     }
 
-    //경매 운영자가 저장된 금액 회수하는함수
+    //경매 운영자가 컨트랙트에 귀속된 금액 회수하는함수
     function Collectproceeds() external payable onlyOwner
     {
         require(proceeds > 0, "Not enough balance");
         payable(owner()).transfer(proceeds);
         proceeds = 0; 
     }
+    
 }
 
 contract ViewTransactionLog{
