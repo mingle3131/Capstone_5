@@ -35,7 +35,7 @@ contract escrow is Ownable{
 
     function getEthSignedMessageHash(bytes32 messageHash) public pure returns (bytes32) 
     {
-    return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
+        return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
     }
 
     //서명 확인용 함수 (가스 서버 부담위함)
@@ -48,7 +48,6 @@ contract escrow is Ownable{
 
     return recovered == user;
     }
-
 
     //계좌 잔액 반환
     function getBalance() public view returns (uint256) 
@@ -86,38 +85,33 @@ contract escrow is Ownable{
 
 
     //거래성사시 예치금 환불해주는함수
-function EscrowRefund(uint64 tradeNum) external onlyOwner 
-{
-    uint256 highestBid = 0;
-    address winner;
-    address[] memory bidders = bidderList[tradeNum];
+    function EscrowRefund(uint64 tradeNum) external onlyOwner 
+    {
+        uint256 highestBid = 0;
+        address winner;
+        address[] memory bidders = bidderList[tradeNum];
+        for (uint256 i = 0; i < bidders.length; i++) {
+            address bidder = bidders[i];
+            uint256 bidAmount = bidsMap[tradeNum][bidder];
+                if (bidAmount > highestBid) {
+                    highestBid = bidAmount;
+                    winner = bidder;
+                    }
+                    }
+        // proceeds에 최고 입찰액 추가
+        proceeds += highestBid;
+        // 나머지 입찰자들에게 환불 (보안 검토 필요)
+        for (uint256 i = 0; i < bidders.length; i++) {
+            address bidder = bidders[i];
+            if (bidder != winner) {
+                uint256 refundAmount = bidsMap[tradeNum][bidder];
+                userBalance[bidder] += refundAmount;
+                emit Transactions(bidder, highestBid, block.timestamp, ActionType.WITHDRAW);
+                }
+                // 입찰 기록 초기화
+                bidsMap[tradeNum][bidder] = 0;
+                }
 
-    for (uint256 i = 0; i < bidders.length; i++) {
-        address bidder = bidders[i];
-        uint256 bidAmount = bidsMap[tradeNum][bidder];
-
-        if (bidAmount > highestBid) {
-            highestBid = bidAmount;
-            winner = bidder;
-        }
-    }
-
-    // proceeds에 최고 입찰액 추가
-    proceeds += highestBid;
-
-    // 나머지 입찰자들에게 환불 (보안 검토 필요)
-    for (uint256 i = 0; i < bidders.length; i++) {
-        address bidder = bidders[i];
-        if (bidder != winner) {
-            uint256 refundAmount = bidsMap[tradeNum][bidder];
-            userBalance[bidder] += refundAmount;
-        }
-
-        // 입찰 기록 초기화
-        bidsMap[tradeNum][bidder] = 0;
-    }
-
-    emit Transactions(winner, highestBid, block.timestamp, ActionType.WITHDRAW);
 }
 
 
@@ -134,9 +128,10 @@ function EscrowRefund(uint64 tradeNum) external onlyOwner
         payable(owner()).transfer(proceeds);
         proceeds = 0; 
     }
-    
-}
 
-contract ViewTransactionLog{
+    function viewMyDeposits() external view returns (uint256)
+    {
+        return userBalance[msg.sender];
+    }
     
 }
