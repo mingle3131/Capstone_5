@@ -60,12 +60,11 @@ contract escrow is Ownable{
 
     //컨트랙트로 입금하는 함수
     // amount = 입금할 금액 from = 보내는 사람 주소 (로그인 데이터에서 가져올것)
-    function EscrowDeposit(uint256 amount, address from) external payable 
+    function EscrowDeposit(uint256 amount) external payable 
     {
         //계좌에 이더가 충분하지 않을시
         require(msg.value == amount, "Send required ETH");
-        //로그인 데이터에 적힌 주소와 실제 주소가 다를시
-        require(msg.sender == from, "Check your account"); 
+
         userBalance[msg.sender] += msg.value;
         emit Transactions(msg.sender, msg.value, block.timestamp, ActionType.DEPOSIT);
     }
