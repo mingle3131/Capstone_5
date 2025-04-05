@@ -53,7 +53,7 @@ def auction_list(request):
     for item in items:
         data.append({
             'case_id': item.case.case_id if item.case else None,
-            'min_bid': float(item.min_bid) if item.min_bid is not None else None,
+            'min_bid': float(item.valuation_amount) if item.valuation_amount is not None else None,
             'auction_failures': item.auction_failures,
             'deadline': item.court_date.strftime('%Y-%m-%d %H:%M') if item.court_date else None,
         })

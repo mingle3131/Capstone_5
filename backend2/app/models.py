@@ -154,7 +154,6 @@ class Itemdetails(models.Model):
     item_spec_url = models.CharField(max_length=255, blank=True, null=True)
     item_purpose = models.CharField(max_length=255, blank=True, null=True)
     valuation_amount = models.DecimalField(max_digits=20, decimal_places=2, blank=True, null=True)
-    min_bid = models.DecimalField(max_digits=20, decimal_places=2, blank=True, null=True)
     item_note = models.CharField(max_length=255, blank=True, null=True)
     item_status = models.CharField(max_length=255, blank=True, null=True)
     court_date = models.DateTimeField(blank=True, null=True)  # DATETIME이므로 DateTimeField
