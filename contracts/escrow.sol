@@ -7,7 +7,6 @@ import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
 
-
 contract escrow is Ownable{
 
     mapping(uint64 => mapping(address => uint256)) public bidsMap;  // 거래번호 -> 입찰자 -> 입찰 보증금 
@@ -106,7 +105,8 @@ contract escrow is Ownable{
         uint256 highestBid = 0;
         address winner;
         address[] memory bidders = bidderList[tradeNum];
-        for (uint256 i = 0; i < bidders.length; i++) {
+        uint256 len=bidders.length;
+        for (uint256 i = 0; i < len; i++) {
             address bidder = bidders[i];
             uint256 bidAmount = bidsMap[tradeNum][bidder];
                 if (bidAmount > highestBid) {
@@ -117,7 +117,7 @@ contract escrow is Ownable{
         // proceeds에 최고 입찰액 추가
         proceeds += highestBid;
         // 나머지 입찰자들에게 환불 
-        for (uint256 i = 0; i < bidders.length; i++) {
+        for (uint256 i = 0; i < len; i++) {
             address bidder = bidders[i];
             if (bidder != winner) {
                 uint256 refundAmount = bidsMap[tradeNum][bidder];
@@ -125,8 +125,6 @@ contract escrow is Ownable{
                 emit Transactions(bidder, refundAmount, block.timestamp, ActionType.REFUND);
                 emit BidEvents(bidder, refundAmount, block.timestamp, tradeNum, ActionType.REFUND);
                 }
-                // 입찰 기록 초기화
-                bidsMap[tradeNum][bidder] = 0;
                 }
     }
 
@@ -149,9 +147,10 @@ contract escrow is Ownable{
     function Collectproceeds() external payable onlyOwner
     {
         require(proceeds > 0, "Not enough balance");
-        payable(owner()).transfer(proceeds);
-        emit Transactions(owner(), proceeds, block.timestamp, ActionType.WITHDRAW);
+        uint256 amount=proceeds;
         proceeds = 0; 
+        payable(owner()).transfer(amount);
+        emit Transactions(owner(), amount, block.timestamp, ActionType.WITHDRAW);
     }
 
     function viewMyDeposits() external view returns (uint256)
