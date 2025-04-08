@@ -69,7 +69,7 @@ contract escrow is Ownable{
 
 
     //컨트랙트로 입금하는 함수
-    // amount = 입금할 금액 from = 보내는 사람 주소 (로그인 데이터에서 가져올것)
+    // amount = 입금할 금액 
     function EscrowDeposit(uint256 amount) external payable 
     {
         //계좌에 이더가 충분하지 않을시
