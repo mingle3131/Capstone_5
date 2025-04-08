@@ -6,15 +6,30 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 import "@openzeppelin/contracts/utils/cryptography/ECDSA.sol";
 
+interface KeeperCompatibleInterface {
+    function checkUpkeep(bytes calldata checkData) external view returns (bool upkeepNeeded, bytes memory performData);
+    function performUpkeep(bytes calldata performData) external;
+}
 
-contract escrow is Ownable{
+
+contract escrow is Ownable, KeeperCompatibleInterface{
 
     mapping(uint64 => mapping(address => uint256)) public bidsMap;  // 거래번호 -> 입찰자 -> 입찰 보증금 
     mapping(address => uint256) public userBalance; //사용자가 현재 사용가능한 금액
     mapping(uint64 => address[]) bidderList; // 거래번호별 입찰자목록 저장
+    
+    mapping(uint64 => uint256) tradeEndTime; // 거래번호별 종료시간
+
     uint256 proceeds = 0; //경매 낙찰로 컨트랙트에 귀속된 금액
+
     enum ActionType { DEPOSIT, WITHDRAW, REFUND, BID }
+
     mapping(address => uint256) public nonces;
+    
+    uint64[] public refundQueue;
+    mapping(uint64 => bool) public refundReady;
+    mapping(uint64 => bool) public refundProcessed;
+    mapping(uint64 => bool) private inQueue;
 
 
     using ECDSA for bytes32;
@@ -34,6 +49,27 @@ contract escrow is Ownable{
     constructor() Ownable(msg.sender) {}
 
 
+    function checkUpkeep(bytes calldata) external view override returns (bool upkeepNeeded, bytes memory performData) 
+    {
+    for (uint256 i = 0; i < refundQueue.length; i++) 
+    {
+        uint64 tradeNum = refundQueue[i];
+        if (refundReady[tradeNum] && !refundProcessed[tradeNum]) {
+            return (true, abi.encode(tradeNum));
+        }
+    }
+    return (false, bytes(""));
+    }
+        
+    function performUpkeep(bytes calldata performData) external override 
+    {
+        uint64 tradeNum = abi.decode(performData, (uint64));
+        require(refundReady[tradeNum], "Not ready");
+        require(!refundProcessed[tradeNum], "Already processed");
+        EscrowRefund(tradeNum);
+        refundProcessed[tradeNum] = true;
+    }
+
     function getEthSignedMessageHash(bytes32 messageHash) public pure returns (bytes32) 
     {
         return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
@@ -45,18 +81,15 @@ contract escrow is Ownable{
         bytes32 hash = keccak256(abi.encodePacked(tradeNum, amount, user, nonce));
         bytes32 ethSignedHash = getEthSignedMessageHash(hash);
         address recovered = ECDSA.recover(ethSignedHash, signature);
-
-
-    return recovered == user;
+        return recovered == user;
     }
+
     function verifySignatureForWithdraw(uint256 amount, address user, uint256 nonce, bytes memory signature) public pure returns (bool) 
     {
         bytes32 hash = keccak256(abi.encodePacked(amount, user, nonce));
         bytes32 ethSignedHash = getEthSignedMessageHash(hash);
         address recovered = ECDSA.recover(ethSignedHash, signature);
-
-
-    return recovered == user;
+        return recovered == user;
     }
 
     //계좌 잔액 반환
@@ -100,7 +133,7 @@ contract escrow is Ownable{
 
 
     //거래성사시 예치금 환불해주는함수
-    function EscrowRefund(uint64 tradeNum) external onlyOwner 
+    function EscrowRefund(uint64 tradeNum) internal
     {
         uint256 highestBid = 0;
         address winner;
@@ -122,6 +155,7 @@ contract escrow is Ownable{
             if (bidder != winner) {
                 uint256 refundAmount = bidsMap[tradeNum][bidder];
                 userBalance[bidder] += refundAmount;
+                delete bidsMap[tradeNum][bidder];
                 emit Transactions(bidder, refundAmount, block.timestamp, ActionType.REFUND);
                 emit BidEvents(bidder, refundAmount, block.timestamp, tradeNum, ActionType.REFUND);
                 }
@@ -157,5 +191,4 @@ contract escrow is Ownable{
     {
         return userBalance[msg.sender];
     }
-    
 }
