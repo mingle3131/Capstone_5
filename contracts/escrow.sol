@@ -18,7 +18,6 @@ contract escrow is Ownable, KeeperCompatibleInterface{
     mapping(address => uint256) public userBalance; //사용자가 현재 사용가능한 금액
     mapping(uint64 => address[]) bidderList; // 거래번호별 입찰자목록 저장
     
-    mapping(uint64 => uint256) tradeEndTime; // 거래번호별 종료시간
 
     uint256 proceeds = 0; //경매 낙찰로 컨트랙트에 귀속된 금액
 
@@ -26,12 +25,13 @@ contract escrow is Ownable, KeeperCompatibleInterface{
 
     mapping(address => uint256) public nonces;
     
-    uint64[] public refundQueue;
-    mapping(uint64 => bool) public refundReady;
-    mapping(uint64 => bool) public refundProcessed;
-    mapping(uint64 => bool) private inQueue;
+    uint256 public lastUpkeepTime;
+    uint256 public upkeepInterval = 1 days; // 24시간
 
+    //  자동화 순회를 위한 거래 번호 저장 배열
+    uint64[] public tradeNumList;
 
+    
     using ECDSA for bytes32;
     
     // 경매 이벤트 로그 (나중에 조회하기위함)
@@ -46,29 +46,47 @@ contract escrow is Ownable, KeeperCompatibleInterface{
     AggregatorV3Interface internal usdKrwFeed; //달러 / 원화 환율 
 
 
-    constructor() Ownable(msg.sender) {}
+    constructor() Ownable(msg.sender) {
+        // 현재 block.timestamp를 기준으로, 오늘 자정(한국시간)을 UTC 기준으로 보정
+    uint256 nowUTC = block.timestamp;
+    uint256 offset = 9 hours;
 
+    // UTC 기준의 오늘 00:00 (KST 기준)
+    lastUpkeepTime = ((nowUTC + offset) / 1 days) * 1 days - offset;
+    }
 
+    
     function checkUpkeep(bytes calldata) external view override returns (bool upkeepNeeded, bytes memory performData) 
     {
-    for (uint256 i = 0; i < refundQueue.length; i++) 
-    {
-        uint64 tradeNum = refundQueue[i];
-        if (refundReady[tradeNum] && !refundProcessed[tradeNum]) {
-            return (true, abi.encode(tradeNum));
-        }
+        upkeepNeeded = block.timestamp >= lastUpkeepTime + upkeepInterval;
+        performData = "";
     }
-    return (false, bytes(""));
-    }
+
+    
+    function performUpkeep(bytes calldata) external override {
+        require(block.timestamp >= lastUpkeepTime + upkeepInterval, "Too early");
+        lastUpkeepTime = block.timestamp;
         
-    function performUpkeep(bytes calldata performData) external override 
-    {
-        uint64 tradeNum = abi.decode(performData, (uint64));
-        require(refundReady[tradeNum], "Not ready");
-        require(!refundProcessed[tradeNum], "Already processed");
-        EscrowRefund(tradeNum);
-        refundProcessed[tradeNum] = true;
+        uint256 i = 0;
+        while (i < tradeNumList.length) {
+            uint64 tradeNum = tradeNumList[i];
+            // 입찰자가 없으면 나중에 다시 확인하므로 그대로 둠
+            if (bidderList[tradeNum].length == 0) {
+                i++;
+                continue;
+                }
+            // 입찰자 있으면 환불 처리 후 리스트에서 제거
+            EscrowRefund(tradeNum);
+            // swap and pop
+            tradeNumList[i] = tradeNumList[tradeNumList.length - 1];
+            tradeNumList.pop();
+            // i는 증가하지 않음 → 새로 swap된 요소 검사
+            }
     }
+
+
+
+
 
     function getEthSignedMessageHash(bytes32 messageHash) public pure returns (bytes32) 
     {
@@ -100,7 +118,6 @@ contract escrow is Ownable, KeeperCompatibleInterface{
         // 프론트엔드에서 표시할거면 따로 바꿔야함
     }
 
-
     //컨트랙트로 입금하는 함수
     // amount = 입금할 금액 
     function EscrowDeposit(uint256 amount) external payable 
@@ -122,6 +139,10 @@ contract escrow is Ownable, KeeperCompatibleInterface{
 
         require(amount <= userBalance[bidder], "Not enough balance");
         require(bidsMap[tradeNum][bidder] == 0, "Already bid"); //입찰은 거래당 1회만 가능
+
+        if (bidderList[tradeNum].length == 0) {
+        tradeNumList.push(tradeNum);
+    }
 
         bidsMap[tradeNum][bidder] += amount;
         userBalance[bidder] -= amount;
@@ -155,10 +176,10 @@ contract escrow is Ownable, KeeperCompatibleInterface{
             if (bidder != winner) {
                 uint256 refundAmount = bidsMap[tradeNum][bidder];
                 userBalance[bidder] += refundAmount;
-                delete bidsMap[tradeNum][bidder];
                 emit Transactions(bidder, refundAmount, block.timestamp, ActionType.REFUND);
                 emit BidEvents(bidder, refundAmount, block.timestamp, tradeNum, ActionType.REFUND);
                 }
+                delete bidsMap[tradeNum][bidder];
                 }
     }
 
