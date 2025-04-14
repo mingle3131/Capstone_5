@@ -39,98 +39,100 @@ menuItems.forEach(item => {
   });
 });
 
-document.addEventListener('DOMContentLoaded', () => {
-  // Fetch and populate auction list when the page loads
-  fetchAuctionData();
-});
+// 즐겨찾기 목록 로딩
+let favorites = JSON.parse(localStorage.getItem('favorites')) || [];
 
-async function fetchAuctionData() {
-  try {
-    // Make sure the URL is correct relative to where index.html is served
-    const response = await fetch('http://127.0.0.1:8000/api/auctions/'); 
-    if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
-    }
-    const auctions = await response.json();
-    populateAuctionTable(auctions);
-  } catch (error) {
-    console.error('Error fetching auction data:', error);
-    // Optionally display an error message in the table or elsewhere
-    const tableSection = document.querySelector('.auction-list');
-    if (tableSection) {
-        const tableBody = tableSection.querySelector('table tbody');
-        if (tableBody) {
-            tableBody.innerHTML = '<tr><td colspan="6">데이터를 불러오는 중 오류가 발생했습니다.</td></tr>';
-        }
-    }
-  }
-}
-
-function populateAuctionTable(auctions) {
-  // Find the section containing the "기일경매목록" table
-  const tableSection = document.querySelector('.auction-list'); 
-  if (!tableSection) {
-    console.error('Could not find the .auction-list section');
-    return; 
-  }
-  // Find the first table's body within that section
-  const tableBody = tableSection.querySelector('table tbody'); 
-  if (!tableBody) {
-    console.error('Could not find the table body within .auction-list');
-    return; 
-  }
-
-  // Clear existing placeholder rows (like the example row in index.html)
-  tableBody.innerHTML = ''; 
-
-  // Check if there's any auction data
-  if (!auctions || auctions.length === 0) {
-      tableBody.innerHTML = '<tr><td colspan="6">표시할 경매 목록이 없습니다.</td></tr>';
-      return;
-  }
-
-  // Populate with new data
-  auctions.forEach(auction => {
-    const row = tableBody.insertRow();
-
-    // 사건번호
-    const cellCaseId = row.insertCell();
-    cellCaseId.textContent = auction.case_id || '정보 없음'; 
-
-    // 최저입찰가 (Format as Korean Won)
-    const cellMinBid = row.insertCell();
-    cellMinBid.textContent = auction.min_bid !== null 
-        ? parseInt(auction.min_bid).toLocaleString('ko-KR') + '원' 
-        : '정보 없음'; 
-    cellMinBid.style.textAlign = 'right'; // Align currency to the right
-
-    // 입찰횟수
-    const cellFailures = row.insertCell();
-    cellFailures.textContent = auction.auction_failures !== null 
-        ? `${auction.auction_failures}회` 
-        : '정보 없음';
-    cellFailures.style.textAlign = 'center'; // Center align count
-
-    // 마감시간
-    const cellDeadline = row.insertCell();
-    // Assuming deadline is already formatted 'YYYY-MM-DD HH:MM' from backend
-    cellDeadline.textContent = auction.deadline || '정보 없음'; 
-
-    // 즐겨찾기 (Placeholder)
-    const cellFavorite = row.insertCell();
-    cellFavorite.textContent = '♡'; 
-    cellFavorite.style.textAlign = 'center';
-    cellFavorite.style.cursor = 'pointer'; // Indicate it's clickable
-    // TODO: Add functionality to add/remove favorite
-
-    // 입찰하기 버튼
-    const cellBid = row.insertCell();
-    const bidButton = document.createElement('button');
-    bidButton.textContent = '입찰하기';
-    bidButton.classList.add('btn-secondary');
-    // TODO: Add event listener or link for the bid button
-    // Example: bidButton.onclick = () => redirectToBidPage(auction.case_id);
-    cellBid.appendChild(bidButton);
-    cellBid.style.textAlign = 'center';
+// 즐겨찾기 테이블 업데이트
+function updateFavoritesTable() {
+  const tbody = document.querySelector('#favorites-table tbody');
+  tbody.innerHTML = '';
+  favorites.forEach(item => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td>${item.caseNumber}</td>
+      <td>${item.minBid}</td>
+      <td>${item.deadline}</td>
+    `;
+    tbody.appendChild(tr);
   });
 }
+
+
+// 별표 아이콘 상태 초기화
+function updateStarIcons() {
+  document.querySelectorAll('.auction-list .favorite-btn').forEach(btn => {
+    const row = btn.closest('tr');
+    const caseNumber = row.children[0].textContent;
+    const icon = btn.querySelector('i');
+    const isFavorited = favorites.some(f => f.caseNumber === caseNumber);
+    icon.classList.toggle('fa-solid', isFavorited);
+    icon.classList.toggle('fa-regular', !isFavorited);
+  });
+}
+
+
+// 기일경매목록 불러오기
+function fetchAuctionList() {
+  fetch('http://127.0.0.1:8000/api/cases/')
+    .then(res => res.json())
+    .then(data => {
+      const tbody = document.querySelector('.auction-list .table tbody');
+      tbody.innerHTML = '';
+
+      data.forEach(auction => {
+        const details = auction.itemdetails_set?.[0]; // 첫 번째 디테일만 사용
+
+        if (!details) return; // 없으면 건너뜀
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${auction.case_id}</td>
+          <td>${details.min_bid}</td>
+          <td>${details.auction_failures}회</td>
+          <td>${details.court_date}</td>
+          <td><button class="favorite-btn"><i class="fa-regular fa-star"></i></button></td>
+          <td><button class="btn-secondary">입찰하기</button></td>
+        `;
+        tbody.appendChild(tr);
+      });
+
+      updateStarIcons();
+    })
+    .catch(err => {
+      console.error('기일경매목록 불러오기 실패:', err);
+    });
+}
+
+
+// 별표 버튼 클릭 시 즐겨찾기 토글
+document.addEventListener('click', e => {
+  if (e.target.closest('.favorite-btn')) {9
+    const btn = e.target.closest('.favorite-btn');
+    const icon = btn.querySelector('i');
+    const row = btn.closest('tr');
+    const caseNumber = row.children[0].textContent;
+    const minBid = row.children[1].textContent;
+    const deadline = row.children[3].textContent;
+
+    const index = favorites.findIndex(f => f.caseNumber === caseNumber);
+
+    if (index === -1) {
+      favorites.push({ caseNumber, minBid, deadline });
+      icon.classList.remove('fa-regular');
+      icon.classList.add('fa-solid');
+    } else {
+      favorites.splice(index, 1);
+      icon.classList.remove('fa-solid');
+      icon.classList.add('fa-regular');
+    }
+
+    localStorage.setItem('favorites', JSON.stringify(favorites));
+    updateFavoritesTable();
+  }
+});
+
+
+// 초기 실행
+fetchAuctionList();
+updateFavoritesTable();
+
