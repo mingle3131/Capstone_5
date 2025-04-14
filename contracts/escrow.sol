@@ -14,9 +14,13 @@ interface KeeperCompatibleInterface {
 
 contract escrow is Ownable, KeeperCompatibleInterface{
 
-    mapping(uint64 => mapping(address => uint256)) public bidsMap;  // 거래번호 -> 입찰자 -> 입찰 보증금 
-    mapping(address => uint256) public userBalance; //사용자가 현재 사용가능한 금액
-    mapping(uint64 => address[]) bidderList; // 거래번호별 입찰자목록 저장
+    mapping(uint64 => mapping(address => uint256)) private bidsMap;  // 거래번호 -> 입찰자 -> 입찰가
+    mapping(uint64 => mapping(address => uint256)) private bidSecurity;  // 거래번호 -> 입찰자 -> 보증금
+    mapping(uint64 => mapping(address => uint256)) private bidtime;  // 거래번호 -> 입찰자 -> 입찰시각
+    mapping(address => uint256) private userBalance; //사용자가 현재 사용가능한 금액
+    mapping(uint64 => address[]) private bidderList; // 거래번호별 입찰자목록 저장
+    mapping(uint64 => mapping(address => uint256)) private paymentDueTime; //낙찰자 납부기한
+
     
 
     uint256 proceeds = 0; //경매 낙찰로 컨트랙트에 귀속된 금액
@@ -26,10 +30,10 @@ contract escrow is Ownable, KeeperCompatibleInterface{
     mapping(address => uint256) public nonces;
     
     uint256 public lastUpkeepTime;
-    uint256 public upkeepInterval = 1 days; // 24시간
+    uint256 public upkeepInterval = 1 days; // upkeepInterval 간격으로 refund함수 반복
 
     //  자동화 순회를 위한 거래 번호 저장 배열
-    uint64[] public tradeNumList;
+    uint64[] private tradeNumList;
 
     
     using ECDSA for bytes32;
@@ -94,9 +98,9 @@ contract escrow is Ownable, KeeperCompatibleInterface{
     }
 
     //서명 확인용 함수 (가스 서버 부담위함)
-    function verifySignature(uint64 tradeNum, uint256 amount, address user, uint256 nonce, bytes memory signature) public pure returns (bool) 
+    function verifySignature(uint64 tradeNum, uint256 amount, uint security, address user, uint256 nonce, bytes memory signature) public pure returns (bool) 
     {
-        bytes32 hash = keccak256(abi.encodePacked(tradeNum, amount, user, nonce));
+        bytes32 hash = keccak256(abi.encodePacked(tradeNum, amount, security, user, nonce));
         bytes32 ethSignedHash = getEthSignedMessageHash(hash);
         address recovered = ECDSA.recover(ethSignedHash, signature);
         return recovered == user;
@@ -131,22 +135,25 @@ contract escrow is Ownable, KeeperCompatibleInterface{
 
 
     //경매 입찰 함수
-    function Bid(uint64 tradeNum, uint256 amount, address bidder, uint256 nonce, bytes memory signature) external
+    function Bid(uint64 tradeNum, uint256 amount, uint256 security, address bidder, uint256 nonce, bytes memory signature) external
     {
-        require(verifySignature(tradeNum, amount, bidder, nonce, signature), "Invalid signature");
+        //amount = 입찰가 security= 보증금
+        require(verifySignature(tradeNum, amount, security, bidder, nonce, signature), "Invalid signature");
         require(nonce == nonces[bidder], "Invalid nonce");
         nonces[bidder] += 1;
 
-        require(amount <= userBalance[bidder], "Not enough balance");
+        require(security <= userBalance[bidder], "Not enough balance");
         require(bidsMap[tradeNum][bidder] == 0, "Already bid"); //입찰은 거래당 1회만 가능
 
         if (bidderList[tradeNum].length == 0) {
         tradeNumList.push(tradeNum);
     }
 
-        bidsMap[tradeNum][bidder] += amount;
-        userBalance[bidder] -= amount;
-        bidderList[tradeNum].push(bidder);
+        bidSecurity[tradeNum][bidder] = security; //보증금 기록
+        bidsMap[tradeNum][bidder]=amount; //입찰가 기록
+        userBalance[bidder] -= security; //보증금만큼 사용가능금액 차감
+        bidderList[tradeNum].push(bidder); //입찰자 목록에 추가
+        bidtime[tradeNum][bidder] = block.timestamp; //입찰시각 기록
 
         emit BidEvents(bidder, amount, block.timestamp, tradeNum, ActionType.BID);
         emit Transactions(bidder, amount, block.timestamp, ActionType.BID);
@@ -163,9 +170,17 @@ contract escrow is Ownable, KeeperCompatibleInterface{
         for (uint256 i = 0; i < len; i++) {
             address bidder = bidders[i];
             uint256 bidAmount = bidsMap[tradeNum][bidder];
-                if (bidAmount > highestBid) {
+                if (bidAmount >= highestBid) {
+                    if(bidAmount!=highestBid){
                     highestBid = bidAmount;
                     winner = bidder;
+                    }
+                    else{
+                        if (bidtime[tradeNum][winner]>bidtime[tradeNum][bidder]){
+                            highestBid = bidAmount;
+                            winner = bidder;
+                            }
+                    }
                     }
                     }
         // proceeds에 최고 입찰액 추가
