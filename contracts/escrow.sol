@@ -39,10 +39,10 @@ contract escrow is Ownable, KeeperCompatibleInterface{
     using ECDSA for bytes32;
     
     // 경매 이벤트 로그 (나중에 조회하기위함)
-    event BidEvents(address indexed from, uint256 amount, uint256 timestamp, uint64 tradeNum, ActionType action);
+    event BidEvents(uint64 tradeNum, ActionType action);
 
     //내부 금액 이동 이벤트 로그
-    event Transactions(address indexed user, uint256 amount, uint256 timestamp, ActionType action); 
+    event Transactions(ActionType action); 
 
 
     // 아비트럼에서는 이더리움/원화 환율을 못가져옴 -> 이더/달러 달러/원화 가져와서 이중으로 환산함
@@ -130,7 +130,7 @@ contract escrow is Ownable, KeeperCompatibleInterface{
         require(msg.value == amount, "Send required ETH");
 
         userBalance[msg.sender] += msg.value;
-        emit Transactions(msg.sender, msg.value, block.timestamp, ActionType.DEPOSIT);
+        emit Transactions(ActionType.DEPOSIT);
     }
 
 
@@ -155,8 +155,7 @@ contract escrow is Ownable, KeeperCompatibleInterface{
         bidderList[tradeNum].push(bidder); //입찰자 목록에 추가
         bidtime[tradeNum][bidder] = block.timestamp; //입찰시각 기록
 
-        emit BidEvents(bidder, amount, block.timestamp, tradeNum, ActionType.BID);
-        emit Transactions(bidder, amount, block.timestamp, ActionType.BID);
+        emit BidEvents(tradeNum, ActionType.BID);
     }
 
 
@@ -191,8 +190,7 @@ contract escrow is Ownable, KeeperCompatibleInterface{
             if (bidder != winner) {
                 uint256 refundAmount = bidsMap[tradeNum][bidder];
                 userBalance[bidder] += refundAmount;
-                emit Transactions(bidder, refundAmount, block.timestamp, ActionType.REFUND);
-                emit BidEvents(bidder, refundAmount, block.timestamp, tradeNum, ActionType.REFUND);
+                emit BidEvents(tradeNum, ActionType.REFUND);
                 }
                 delete bidsMap[tradeNum][bidder];
                 }
@@ -210,7 +208,7 @@ contract escrow is Ownable, KeeperCompatibleInterface{
     userBalance[to] -= amount;
     payable(to).transfer(amount);
 
-    emit Transactions(to, amount, block.timestamp, ActionType.WITHDRAW);
+    emit Transactions(ActionType.WITHDRAW);
     }
 
     //경매 운영자가 컨트랙트에 귀속된 금액 회수하는함수
@@ -220,7 +218,7 @@ contract escrow is Ownable, KeeperCompatibleInterface{
         uint256 amount=proceeds;
         proceeds = 0; 
         payable(owner()).transfer(amount);
-        emit Transactions(owner(), amount, block.timestamp, ActionType.WITHDRAW);
+        emit Transactions(ActionType.WITHDRAW);
     }
 
     function viewMyDeposits() external view returns (uint256)
