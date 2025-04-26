@@ -113,7 +113,6 @@ contract escrow is Ownable, KeeperCompatibleInterface{
         address recovered = ECDSA.recover(ethSignedHash, signature);
         return recovered == user;
     }
-
     //계좌 잔액 반환
     function getBalance() public view returns (uint256) 
     {
@@ -137,9 +136,10 @@ contract escrow is Ownable, KeeperCompatibleInterface{
     //경매 입찰 함수
     function Bid(uint64 tradeNum, uint256 amount, uint256 security, address bidder, uint256 nonce, bytes memory signature) external
     {
-        //amount = 입찰가 security= 보증금
-        require(verifySignature(tradeNum, amount, security, bidder, nonce, signature), "Invalid signature");
+        //amount = 입찰가 security= 보증금  
         require(nonce == nonces[bidder], "Invalid nonce");
+        require(verifySignature(tradeNum, amount, security, bidder, nonce, signature), "Invalid signature");
+
         nonces[bidder] += 1;
 
         require(security <= userBalance[bidder], "Not enough balance");
@@ -148,12 +148,12 @@ contract escrow is Ownable, KeeperCompatibleInterface{
         if (bidderList[tradeNum].length == 0) {
         tradeNumList.push(tradeNum);
     }
-
         bidSecurity[tradeNum][bidder] = security; //보증금 기록
         bidsMap[tradeNum][bidder]=amount; //입찰가 기록
         userBalance[bidder] -= security; //보증금만큼 사용가능금액 차감
         bidderList[tradeNum].push(bidder); //입찰자 목록에 추가
         bidtime[tradeNum][bidder] = block.timestamp; //입찰시각 기록
+        // security, amount uint80으로 변경 timestamp uint64로 바꿔서 구조체로 한번에해야할듯(가스절약)
 
         emit BidEvents(tradeNum, ActionType.BID);
     }
@@ -194,6 +194,7 @@ contract escrow is Ownable, KeeperCompatibleInterface{
                 }
                 delete bidsMap[tradeNum][bidder];
                 }
+                //낙찰자 선정로직을 입찰과정으로 옮기는것이 좋아보임 => 루프 없이 현재 최고가만 비교하게끔
     }
 
 
