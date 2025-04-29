@@ -13,33 +13,43 @@ interface KeeperCompatibleInterface {
 
 
 contract escrow is Ownable, KeeperCompatibleInterface{
+    struct bidInfo{
+        uint80 bidAmount; // 입찰액
+        uint80 bidSecurity; // 보증금
+        uint64 bidTime; //입찰시각
+    } //입찰정보 구조체
+    struct tradeInfo{
+        uint80 highestAmount; //최고가액
+        uint64 highestTime; //최고가 낙찰일자
+        address winner; // 현재기준 낙찰자
+        uint32 dueDate; //낙찰자 납부기한
+    }
+    mapping(uint64=>mapping(address=>bidInfo)) private bidInfos; //거래번호 -> 입찰자 -> 입찰구조체
+    mapping(uint64=>uint256[2][]) private cryptogram; // 거래번호 -> 암호화데이터 저장 (약 50바이트)
+    mapping(uint64=>tradeInfo) private tradeInfos;
 
-    mapping(uint64 => mapping(address => uint256)) private bidsMap;  // 거래번호 -> 입찰자 -> 입찰가
-    mapping(uint64 => mapping(address => uint256)) private bidSecurity;  // 거래번호 -> 입찰자 -> 보증금
-    mapping(uint64 => mapping(address => uint256)) private bidtime;  // 거래번호 -> 입찰자 -> 입찰시각
     mapping(address => uint256) private userBalance; //사용자가 현재 사용가능한 금액
-    mapping(uint64 => address[]) private bidderList; // 거래번호별 입찰자목록 저장
-    mapping(uint64 => mapping(address => uint256)) private paymentDueTime; //낙찰자 납부기한
-
     
+    mapping(uint64 => address[]) private bidderList; // 거래번호별 입찰자목록 저장 (보증금 환불과 대금미납시 새로운 낙찰자 선정을 원활하게하기위함)
+
+    mapping(uint64 => mapping(address=>bool) ) private hasBid; //이미 입찰한 매물인지 체크 용도
+        
+    uint64[] private tradeNumList;  //  자동화 순회를 위한 거래 번호 저장 배열
 
     uint256 proceeds = 0; //경매 낙찰로 컨트랙트에 귀속된 금액
 
-    enum ActionType { DEPOSIT, WITHDRAW, REFUND, BID }
+    enum ActionType { DEPOSIT, WITHDRAW, REFUND, BID }    
 
     mapping(address => uint256) public nonces;
     
     uint256 public lastUpkeepTime;
     uint256 public upkeepInterval = 1 days; // upkeepInterval 간격으로 refund함수 반복
 
-    //  자동화 순회를 위한 거래 번호 저장 배열
-    uint64[] private tradeNumList;
-
     
     using ECDSA for bytes32;
     
     // 경매 이벤트 로그 (나중에 조회하기위함)
-    event BidEvents(uint64 tradeNum, ActionType action);
+    event BidEvents(uint64 tradeNum, address bidder, uint80 amount, ActionType action);
 
     //내부 금액 이동 이벤트 로그
     event Transactions(ActionType action); 
@@ -87,8 +97,28 @@ contract escrow is Ownable, KeeperCompatibleInterface{
             // i는 증가하지 않음 → 새로 swap된 요소 검사
             }
     }
-
-
+    function putCryptogram(uint256 _P1, uint256 _P2, uint64 _tradeNum, address _bidder, uint80 _security, uint256 _nonce, bytes memory signature) public onlyOwner()
+    {
+        require(!hasBid[_tradeNum][_bidder], "Already bid on this trade");
+        uint256 userBal = userBalance[_bidder];
+        uint256 userNonce = nonces[_bidder];
+        require(_security <= userBal, "Not enough balance");
+        require(_nonce == userNonce, "Invalid nonce");
+        require(verifySignature(_tradeNum, _security, _bidder, _nonce, signature), "Invalid Signature");
+        
+        cryptogram[_tradeNum].push([_P1, _P2]);
+        
+        userBalance[_bidder] = userBal - _security;
+        bidderList[_tradeNum].push(_bidder);
+        hasBid[_tradeNum][_bidder] = true;
+        nonces[_bidder] = userNonce + 1;
+    }
+//백엔드에서 DES암호화한 입찰정보를 저장
+    
+    function getCryptogram(uint64 _tradeNum) external view returns (uint256[2][] memory) 
+    {
+        return cryptogram[_tradeNum];
+    }// 백엔드에서 입찰정보를 다시 불러와 복호화
 
 
 
@@ -98,9 +128,9 @@ contract escrow is Ownable, KeeperCompatibleInterface{
     }
 
     //서명 확인용 함수 (가스 서버 부담위함)
-    function verifySignature(uint64 tradeNum, uint256 amount, uint security, address user, uint256 nonce, bytes memory signature) public pure returns (bool) 
+    function verifySignature(uint64 tradeNum, uint80 security, address user, uint256 nonce, bytes memory signature) public pure returns (bool) 
     {
-        bytes32 hash = keccak256(abi.encodePacked(tradeNum, amount, security, user, nonce));
+        bytes32 hash = keccak256(abi.encodePacked(tradeNum, security, user, nonce));
         bytes32 ethSignedHash = getEthSignedMessageHash(hash);
         address recovered = ECDSA.recover(ethSignedHash, signature);
         return recovered == user;
@@ -134,65 +164,43 @@ contract escrow is Ownable, KeeperCompatibleInterface{
 
 
     //경매 입찰 함수
-    function Bid(uint64 tradeNum, uint256 amount, uint256 security, address bidder, uint256 nonce, bytes memory signature) external
+    function inputDecrypt(uint64 _tradeNum, uint80 _amount, uint80 _security, address _bidder, uint64 _bidTime, uint32 dueDate) external onlyOwner()
     {
-        //amount = 입찰가 security= 보증금  
-        require(nonce == nonces[bidder], "Invalid nonce");
-        require(verifySignature(tradeNum, amount, security, bidder, nonce, signature), "Invalid signature");
+        if (bidderList[_tradeNum].length == 0) {
+        tradeNumList.push(_tradeNum);
+         } //첫 입찰일시 활성화된 거래목록에 추가
+        bidInfos[_tradeNum][_bidder].bidAmount = _amount;
+        bidInfos[_tradeNum][_bidder].bidSecurity = _security;
+        bidInfos[_tradeNum][_bidder].bidTime = _bidTime;
+        if(_amount >= tradeInfos[_tradeNum].highestAmount && (_bidTime < tradeInfos[_tradeNum].highestTime || tradeInfos[_tradeNum].highestTime == 0))
+        {
+            tradeInfos[_tradeNum].highestAmount = _amount;
+            tradeInfos[_tradeNum].highestTime = _bidTime;
+            tradeInfos[_tradeNum].winner = _bidder;
+        }
+        if(tradeInfos[_tradeNum].dueDate==0)
+        tradeInfos[_tradeNum].dueDate=dueDate;
 
-        nonces[bidder] += 1;
-
-        require(security <= userBalance[bidder], "Not enough balance");
-        require(bidsMap[tradeNum][bidder] == 0, "Already bid"); //입찰은 거래당 1회만 가능
-
-        if (bidderList[tradeNum].length == 0) {
-        tradeNumList.push(tradeNum);
-    }
-        bidSecurity[tradeNum][bidder] = security; //보증금 기록
-        bidsMap[tradeNum][bidder]=amount; //입찰가 기록
-        userBalance[bidder] -= security; //보증금만큼 사용가능금액 차감
-        bidderList[tradeNum].push(bidder); //입찰자 목록에 추가
-        bidtime[tradeNum][bidder] = block.timestamp; //입찰시각 기록
-        // security, amount uint80으로 변경 timestamp uint64로 바꿔서 구조체로 한번에해야할듯(가스절약)
-
-        emit BidEvents(tradeNum, ActionType.BID);
+        emit BidEvents(_tradeNum, _bidder, _amount, ActionType.BID);
     }
 
 
     //거래성사시 예치금 환불해주는함수
-    function EscrowRefund(uint64 tradeNum) internal
+    function EscrowRefund(uint64 _tradeNum) public onlyOwner()
     {
-        uint256 highestBid = 0;
-        address winner;
-        address[] memory bidders = bidderList[tradeNum];
-        uint256 len=bidders.length;
-        for (uint256 i = 0; i < len; i++) {
-            address bidder = bidders[i];
-            uint256 bidAmount = bidsMap[tradeNum][bidder];
-                if (bidAmount >= highestBid) {
-                    if(bidAmount!=highestBid){
-                    highestBid = bidAmount;
-                    winner = bidder;
-                    }
-                    else{
-                        if (bidtime[tradeNum][winner]>bidtime[tradeNum][bidder]){
-                            highestBid = bidAmount;
-                            winner = bidder;
-                            }
-                    }
-                    }
-                    }
+        address winner = tradeInfos[_tradeNum].winner;
         // proceeds에 최고 입찰액 추가
-        proceeds += highestBid;
+        proceeds += tradeInfos[_tradeNum].highestAmount;
         // 나머지 입찰자들에게 환불 
-        for (uint256 i = 0; i < len; i++) {
-            address bidder = bidders[i];
+        uint256 bidderNum=bidderList[_tradeNum].length;
+        for (uint256 i = 0; i < bidderNum; i++) {
+            address bidder = bidderList[_tradeNum][i];
             if (bidder != winner) {
-                uint256 refundAmount = bidsMap[tradeNum][bidder];
-                userBalance[bidder] += refundAmount;
-                emit BidEvents(tradeNum, ActionType.REFUND);
+                uint80 amount = bidInfos[_tradeNum][bidder].bidSecurity;
+                userBalance[bidder] += amount;
+                bidInfos[_tradeNum][bidder].bidSecurity=0;
+                emit BidEvents(_tradeNum, bidder, amount, ActionType.REFUND);
                 }
-                delete bidsMap[tradeNum][bidder];
                 }
                 //낙찰자 선정로직을 입찰과정으로 옮기는것이 좋아보임 => 루프 없이 현재 최고가만 비교하게끔
     }
