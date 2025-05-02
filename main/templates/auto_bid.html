@@ -14,8 +14,20 @@
     <h2>사건 검색 또는 즐겨찾기</h2>
     <div class="input-group">
       <input type="text" id="caseNumber" placeholder="사건번호 입력">
+
+      <!-- 검색 결과 출력용 박스 추가 -->
+      <div id="searchResultBox" class="confirm-box hidden" style="margin-bottom: 10px;">
+        <p id="resultText"></p>
+      </div>
+
       <button onclick="searchCase()">검색</button>
       <button onclick="showFavorites()">즐겨찾기 보기</button>
+      
+      <!-- 즐겨찾기 임시 목록 박스 -->
+      <div id="favoriteList" class="confirm-box hidden" style="margin-bottom: 10px;">
+        <p><strong>즐겨찾기 매물 선택:</strong></p>
+      <ul></ul>
+      </div>
     </div>
   </div>
 
@@ -52,13 +64,66 @@
 </div>
 
 <script>
-  function searchCase() {
-    document.getElementById('reservationForm').classList.remove('hidden');
-  }
+function searchCase() {
+  const caseNumber = document.getElementById('caseNumber').value;
 
-  function showFavorites() {
-    document.getElementById('reservationForm').classList.remove('hidden');
-  }
+  fetch(`/api/search-property/?case_number=${caseNumber}`)
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        // 결과 박스에 텍스트 삽입
+        document.getElementById('resultText').innerText =
+          `${data.case_number} / ${data.usage}`;
+        document.getElementById('searchResultBox').classList.remove('hidden');
+
+        // 폼 보여주기
+        document.getElementById('reservationForm').classList.remove('hidden');
+      } else {
+        alert(data.message);
+      }
+    });
+}
+
+//즐겨찾기 목록 보여주는 함수
+function showFavorites() { 
+  fetch('/api/favorites/')
+    .then(response => response.json())
+    .then(data => {
+      if (data.success) {
+        const listDiv = document.getElementById('favoriteList');
+        listDiv.innerHTML = '<p><strong>즐겨찾기 매물 선택:</strong></p><ul></ul>';
+        const ul = listDiv.querySelector('ul');
+
+        data.favorites.forEach(item => {
+          const li = document.createElement('li');
+          li.innerHTML = `<button onclick="selectFavorite('${item.case_number}', '${item.usage}')">
+                            ${item.case_number} / ${item.usage}</button>`;
+          ul.appendChild(li);
+        });
+
+        listDiv.classList.remove('hidden');
+      } else {
+        alert('즐겨찾기 목록을 불러올 수 없습니다.');
+      }
+    });
+}
+
+
+//즐겨찾기에서 예약 폼으로 넘어가는 함수
+function selectFavorite(caseNumber, usage) {
+  // 1. 사건번호 입력란에 자동 입력
+  document.getElementById('caseNumber').value = caseNumber;
+
+  // 2. 매물 정보 표시
+  document.getElementById('resultText').innerText = `${caseNumber} / ${usage}`;
+  document.getElementById('searchResultBox').classList.remove('hidden');
+
+  // 3. 자동입찰 예약 폼 열기
+  document.getElementById('reservationForm').classList.remove('hidden');
+
+  // 4. 즐겨찾기 목록 숨기기 (선택 사항)
+  document.getElementById('favoriteList').classList.add('hidden');
+}
 
   function confirmReservation() {
     const amount = document.getElementById('bidAmount').value;
@@ -73,8 +138,54 @@
   }
 
   function completeReservation() {
-    alert('자동입찰 예약이 완료되었습니다.');
-    window.location.href = '/my-reservations';
+  const caseNumber = document.getElementById('caseNumber').value;
+  const bidAmount = document.getElementById('bidAmount').value;
+  const reserveTime = document.getElementById('bidTime').value;
+  const isActive = document.getElementById('activateAutoBid').checked;
+
+  fetch('/api/auto-bid/', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-CSRFToken': getCookie('csrftoken')
+    },
+    body: JSON.stringify({
+      case_number: caseNumber,
+      bid_amount: parseInt(bidAmount),
+      reserve_time: reserveTime,
+      is_active: isActive
+    })
+  })
+  .then(response => response.json())
+  .then(data => {
+    if (data.success) {
+      alert(data.message);
+      window.location.href = '/my-reservations';  // 이후 구현 예정
+    } else {
+      alert('예약 실패: ' + data.message);
+    }
+  })
+  .catch(error => {
+    console.error('에러 발생:', error);
+    alert('서버 오류가 발생했습니다.');
+  });
+}
+
+function getCookie(name) {
+  let cookieValue = null;
+  if (document.cookie && document.cookie !== '') {
+    const cookies = document.cookie.split(';');
+    for (let i = 0; i < cookies.length; i++) {
+      const cookie = cookies[i].trim();
+      if (cookie.substring(0, name.length + 1) === (name + '=')) {
+        cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+        break;
+      }
+    }
   }
+  return cookieValue;
+}
 </script>
 {% endblock %}
+
+
