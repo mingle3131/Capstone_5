@@ -42,6 +42,8 @@ INSTALLED_APPS = [
     'corsheaders',
     'accounts',  # 정확히 추가되어야 함
     'auth_api',
+    'main',  # main 앱 추가
+    'django.contrib.sites',  # Django Allauth를 위한 추가
 ]
 
 MIDDLEWARE = [
@@ -60,7 +62,7 @@ ROOT_URLCONF = 'backend.urls'
 TEMPLATES = [
     {
         'BACKEND': 'django.template.backends.django.DjangoTemplates',
-        'DIRS': [],
+        'DIRS': [BASE_DIR / 'main/templates'],  # main 앱의 템플릿 경로 추가
         'APP_DIRS': True,
         'OPTIONS': {
             'context_processors': [
@@ -74,7 +76,9 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'backend.wsgi.application'
-
+STATICFILES_DIRS = [
+    BASE_DIR / 'main/static',  # main 앱의 정적 파일 경로 추가
+]
 
 # Database
 # https://docs.djangoproject.com/en/5.1/ref/settings/#databases

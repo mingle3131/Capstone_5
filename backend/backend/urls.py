@@ -20,4 +20,5 @@ from django.urls import path, include
 urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('app.urls')),  # ← 이거 추가
+    path('', include('main.urls')),  # main 앱의 URL 연결
 ]
