@@ -29,6 +29,8 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
     mapping(uint64=>uint256[2][]) private cryptogram; // 거래번호 -> 암호화데이터 저장 (약 50바이트)
     mapping(uint64=>tradeInfo) private tradeInfos;
 
+    mapping(uint64=>mapping(address=>bool)) private additionalBid; // 대금미납시 경매 참여 여부
+
     mapping(uint64=>mapping(address=>uint80)) private winnerPayment; // 거래번호 -> 낙찰자 -> 납부금액 
 
     mapping(address => uint256) private userBalance; //사용자가 현재 사용가능한 금액
@@ -176,9 +178,9 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
     }
 
     //서명 확인용 함수 (가스 서버 부담위함)
-    function verifySignature(uint64 tradeNum, uint80 security, address user, uint256 nonce, bytes memory signature) public pure returns (bool) 
+    function verifySignature(uint64 tradeNum, uint80 amount, address user, uint256 nonce, bytes memory signature) public pure returns (bool) 
     {
-        bytes32 hash = keccak256(abi.encodePacked(tradeNum, security, user, nonce));
+        bytes32 hash = keccak256(abi.encodePacked(tradeNum, amount, user, nonce));
         bytes32 ethSignedHash = getEthSignedMessageHash(hash);
         address recovered = ECDSA.recover(ethSignedHash, signature);
         return recovered == user;
@@ -213,7 +215,7 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
 
 
 
-    //거래성사시 예치금 환불해주는함수
+    //거래종료시 예치금 환불해주는함수
     function EscrowRefund(uint64 _tradeNum) public onlyOwner()
     {
         address winner = tradeInfos[_tradeNum].winner;
@@ -223,7 +225,7 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
         uint256 bidderNum=bidderList[_tradeNum].length;
         for (uint256 i = 0; i < bidderNum; i++) {
             address bidder = bidderList[_tradeNum][i];
-            if (bidder != winner) {
+            if (bidder != winner && !additionalBid[_tradeNum][bidder]) {
                 uint80 amount = bidInfos[_tradeNum][bidder].bidSecurity;
                 userBalance[bidder] += amount;
                 bidInfos[_tradeNum][bidder].bidSecurity=0;
@@ -233,15 +235,85 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
     }
 
     //대금 납부 함수
-    function payForAward(uint256 _amount, address _from, uint256 nonce, bytes memory signature) public onlyOwner
+    function payForAward(uint80 _amount, uint64 _tradeNum, address _from, uint256 nonce, bytes memory signature) public onlyOwner
     {
-
+        uint80 goalPayment = tradeInfos[_tradeNum].highestAmount-bidInfos[_tradeNum][_from].bidSecurity;
+        uint80 curPayment = winnerPayment[_tradeNum][_from];
+        require(verifySignature( _tradeNum, _amount, _from, nonce, signature),"Invalid Signature");
+        require(userBalance[_from] >= _amount, "Insufficient balance");
+        require(tradeInfos[_tradeNum].winner==_from,"Only winner can pay for bid");
+        require(curPayment+_amount<goalPayment,"payment exceed");
+        userBalance[_from]-=_amount;
+        winnerPayment[_tradeNum][_from]+=_amount;
     }
     
     //대금납부 확인함수
     function checkPayment(uint64 _tradeNum) internal
     {
+        address winner=tradeInfos[_tradeNum].winner;
+        uint80 payment = winnerPayment[_tradeNum][winner];
+        uint80 goal = tradeInfos[_tradeNum].highestAmount-bidInfos[_tradeNum][winner].bidSecurity;
+        if (payment==goal)
+        {
+            proceeds+=winnerPayment[_tradeNum][winner];
+            winnerPayment[_tradeNum][winner]=0;
+            EscrowRefund(_tradeNum);
+        }
+        else
+        {
+            handleUnpaidWinner(_tradeNum, winner);
+        }
+    }
 
+    //대금미납시 추가경매 진행 신청
+    function markAdditionalBid(uint64 _tradeNum, address _bidder) external onlyOwner 
+    {
+    additionalBid[_tradeNum][_bidder] = true;
+    }
+
+
+    //대금미납시 진행
+    function handleUnpaidWinner(uint64 _tradeNum, address prevWinner) internal 
+    {
+    address[] memory bidders = bidderList[_tradeNum];
+    address newWinner;
+    uint80 newHighest = 0;
+    uint64 newTime = 0;
+
+    for (uint i = 0; i < bidders.length; i++) {
+        address bidder = bidders[i];
+        bidInfo memory info = bidInfos[_tradeNum][bidder];
+
+        if (
+            bidder != prevWinner &&
+            additionalBid[_tradeNum][bidder] &&
+            info.bidAmount > newHighest
+        ) {
+            if (
+                info.bidAmount > newHighest || 
+                (info.bidAmount == newHighest && info.bidTime < newTime)
+            ) {
+                newHighest = info.bidAmount;
+                newWinner = bidder;
+                newTime = info.bidTime;
+            }
+        }
+    }
+
+    if (newWinner != address(0)) {
+        tradeInfos[_tradeNum].winner = newWinner;
+        tradeInfos[_tradeNum].highestAmount = newHighest;
+        tradeInfos[_tradeNum].highestTime = newTime;
+
+        // 정시 기준 30일 추가
+        uint256 nowUTC = block.timestamp;
+        uint256 offset = 9 hours;
+        uint32 newDueDate = uint32(((nowUTC + offset) / 1 days) * 1 days - offset + 30 days);
+        tradeInfos[_tradeNum].dueDate = newDueDate;
+
+        winnerPayment[_tradeNum][newWinner] = 0;
+        winnerPayment[_tradeNum][prevWinner] = 0;
+    }
     }
 
 
