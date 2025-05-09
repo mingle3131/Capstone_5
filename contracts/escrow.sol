@@ -11,20 +11,26 @@ interface KeeperCompatibleInterface {
     function checkUpkeep(bytes calldata checkData) external view returns (bool upkeepNeeded, bytes memory performData);
     function performUpkeep(bytes calldata performData) external;
 }
-
+//모든시간 UNIX 타임스탬프 기준으로 사용함(20250508 이런식아님)
 
 contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
     struct bidInfo{
         uint80 bidAmount; // 입찰액
         uint80 bidSecurity; // 보증금
-        uint64 bidTime; //입찰시각
+        uint64 bidTime; //입찰시각 (unix 타임스탬프)
     } //입찰정보 구조체
     struct tradeInfo{
         uint80 highestAmount; //최고가액
         uint64 highestTime; //최고가 낙찰일자
         address winner; // 현재기준 낙찰자
-        uint32 dueDate; //낙찰자 납부기한
+        uint32 dueDate; //낙찰자 납부기한 (unix 타임스탬프)
     }
+    enum TradeState { INACTIVE, ACTIVE, PENDING_SECOND_WINNER, COMPLETED }
+
+    enum bidAction {PUTCRYPT, PAY, ADDITIONAL, WITHDRAW}
+    
+    mapping(uint64 => TradeState) public tradeStates; //매물 현재 상태 저장
+
     mapping(uint64=>mapping(address=>bidInfo)) private bidInfos; //거래번호 -> 입찰자 -> 입찰구조체
     mapping(uint64=>uint256[2][]) private cryptogram; // 거래번호 -> 암호화데이터 저장 (약 50바이트)
     mapping(uint64=>tradeInfo) private tradeInfos;
@@ -45,7 +51,7 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
 
     enum ActionType { DEPOSIT, WITHDRAW, REFUND, BID }    
 
-    mapping(address => uint256) public nonces;
+    mapping(address => mapping(bidAction => uint256)) public nonces;
     
     uint256 public lastUpkeepTime;
     uint256 public upkeepInterval = 1 days; // upkeepInterval 간격으로 refund함수 반복
@@ -84,9 +90,10 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
         tradeInfo memory info = tradeInfos[tradeNum];
 
         if (
+            tradeStates[tradeNum] != TradeState.COMPLETED &&
             info.winner != address(0) &&
             info.dueDate != 0 &&
-            block.timestamp > info.dueDate
+            block.timestamp  > info.dueDate
         ) {
             temp[count] = tradeNum;
             count++;
@@ -120,11 +127,11 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
     }
     }
 
-    function putCryptogram(uint256 _P1, uint256 _P2, uint64 _tradeNum, address _bidder, uint80 _security, uint256 _nonce, bytes memory signature) public onlyOwner()
+    function putCryptogram(uint256 _P1, uint256 _P2, uint64 _tradeNum, address _bidder, uint80 _security, uint256 _nonce, bytes memory signature) public onlyOwner
     {
         require(!hasBid[_tradeNum][_bidder], "Already bid on this trade");
         uint256 userBal = userBalance[_bidder];
-        uint256 userNonce = nonces[_bidder];
+        uint256 userNonce = nonces[_bidder][bidAction.PUTCRYPT];
         require(_security <= userBal, "Not enough balance");
         require(_nonce == userNonce, "Invalid nonce");
         require(verifySignature(_tradeNum, _security, _bidder, _nonce, signature), "Invalid Signature");
@@ -134,7 +141,7 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
         userBalance[_bidder] = userBal - _security;
         bidderList[_tradeNum].push(_bidder);
         hasBid[_tradeNum][_bidder] = true;
-        nonces[_bidder] = userNonce + 1;
+        nonces[_bidder][bidAction.PUTCRYPT] = userNonce + 1;
     }
 //백엔드에서 DES암호화한 입찰정보를 저장
     
@@ -144,10 +151,11 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
     }// 백엔드에서 입찰정보를 다시 불러와 복호화
 
         //경매 입찰 함수
-    function inputDecrypt(uint64 _tradeNum, uint80 _amount, uint80 _security, address _bidder, uint64 _bidTime, uint32 dueDate) external onlyOwner()
+    function inputDecrypt(uint64 _tradeNum, uint80 _amount, uint80 _security, address _bidder, uint64 _bidTime, uint32 dueDate) external onlyOwner
     {
         if (bidderList[_tradeNum].length == 0) {
         tradeNumList.push(_tradeNum);
+        tradeStates[_tradeNum] = TradeState.ACTIVE; 
          } //첫 입찰일시 활성화된 거래목록에 추가
         bidInfos[_tradeNum][_bidder].bidAmount = _amount;
         bidInfos[_tradeNum][_bidder].bidSecurity = _security;
@@ -172,7 +180,7 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
     }
 
 
-    function getEthSignedMessageHash(bytes32 messageHash) public pure returns (bytes32) 
+    function getEthSignedMessageHash(bytes32 messageHash) internal pure returns (bytes32) 
     {
         return keccak256(abi.encodePacked("\x19Ethereum Signed Message:\n32", messageHash));
     }
@@ -186,6 +194,14 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
         return recovered == user;
     }
 
+    function verifyAdditionalBidSignature(uint64 _tradeNum, address _bidder, uint256 _nonce, bytes memory signature) public pure returns (bool) {
+    bytes32 messageHash = keccak256(abi.encodePacked("markAdditionalBid", _tradeNum, _bidder, _nonce));
+    bytes32 ethSignedHash = getEthSignedMessageHash(messageHash);
+    address recovered = ECDSA.recover(ethSignedHash, signature);
+    return recovered == _bidder;
+    }
+
+
     function verifySignatureForWithdraw(uint256 amount, address user, uint256 nonce, bytes memory signature) public pure returns (bool) 
     {
         bytes32 hash = keccak256(abi.encodePacked(amount, user, nonce));
@@ -193,6 +209,14 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
         address recovered = ECDSA.recover(ethSignedHash, signature);
         return recovered == user;
     }
+
+
+    //nonce 반환
+    function getNonce(address user, bidAction action) external view returns (uint256) 
+    {
+    return nonces[user][action];
+    }
+
     //계좌 잔액 반환
     function getBalance() public view returns (uint256) 
     {
@@ -216,7 +240,7 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
 
 
     //거래종료시 예치금 환불해주는함수
-    function EscrowRefund(uint64 _tradeNum) public onlyOwner()
+    function EscrowRefund(uint64 _tradeNum) public onlyOwner
     {
         address winner = tradeInfos[_tradeNum].winner;
         // proceeds에 최고 입찰액 추가
@@ -235,50 +259,54 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
     }
 
     //대금 납부 함수
-    function payForAward(uint80 _amount, uint64 _tradeNum, address _from, uint256 nonce, bytes memory signature) public onlyOwner
+    function payForAward(uint80 _amount, uint64 _tradeNum, address _from, uint256 nonce, bytes memory signature) public onlyOwner 
     {
-        uint80 goalPayment = tradeInfos[_tradeNum].highestAmount-bidInfos[_tradeNum][_from].bidSecurity;
+        uint80 goalPayment = tradeInfos[_tradeNum].highestAmount - bidInfos[_tradeNum][_from].bidSecurity;
         uint80 curPayment = winnerPayment[_tradeNum][_from];
-        require(verifySignature( _tradeNum, _amount, _from, nonce, signature),"Invalid Signature");
+
+        require(nonce == nonces[_from][bidAction.PAY], "Invalid nonce");
+        require(verifySignature(_tradeNum, _amount, _from, nonce, signature), "Invalid Signature");
         require(userBalance[_from] >= _amount, "Insufficient balance");
-        require(tradeInfos[_tradeNum].winner==_from,"Only winner can pay for bid");
-        require(curPayment+_amount<goalPayment,"payment exceed");
-        userBalance[_from]-=_amount;
-        winnerPayment[_tradeNum][_from]+=_amount;
+        require(tradeInfos[_tradeNum].winner == _from, "Only winner can pay for bid");
+        require(curPayment + _amount <= goalPayment, "payment exceed");
+
+        nonces[_from][bidAction.PAY] += 1;  
+
+        userBalance[_from] -= _amount;
+        winnerPayment[_tradeNum][_from] += _amount;
     }
-    
+
     //대금납부 확인함수
-    function checkPayment(uint64 _tradeNum) internal
-    {
-        address winner=tradeInfos[_tradeNum].winner;
-        uint80 payment = winnerPayment[_tradeNum][winner];
-        uint80 goal = tradeInfos[_tradeNum].highestAmount-bidInfos[_tradeNum][winner].bidSecurity;
-        if (payment==goal)
-        {
-            proceeds+=winnerPayment[_tradeNum][winner];
-            winnerPayment[_tradeNum][winner]=0;
-            EscrowRefund(_tradeNum);
-        }
-        else
-        {
-            handleUnpaidWinner(_tradeNum, winner);
-        }
+    function checkPayment(uint64 _tradeNum) internal {
+    address winner = tradeInfos[_tradeNum].winner;
+    uint80 payment = winnerPayment[_tradeNum][winner];
+    uint80 goal = tradeInfos[_tradeNum].highestAmount - bidInfos[_tradeNum][winner].bidSecurity;
+
+    if (payment == goal) {
+        winnerPayment[_tradeNum][winner] = 0;
+        proceeds += payment;
+        tradeStates[_tradeNum] = TradeState.COMPLETED;
+        EscrowRefund(_tradeNum);
+    } else {
+        handleUnpaidWinner(_tradeNum, winner);
+    }
     }
 
     //대금미납시 추가경매 진행 신청
-    function markAdditionalBid(uint64 _tradeNum, address _bidder) external onlyOwner 
-    {
+    function markAdditionalBid(uint64 _tradeNum, address _bidder,uint256 _nonce,bytes memory signature) external onlyOwner {
+    require(_nonce == nonces[_bidder][bidAction.ADDITIONAL], "Invalid nonce");
+    require(verifyAdditionalBidSignature(_tradeNum, _bidder, _nonce, signature), "Invalid signature");
+
     additionalBid[_tradeNum][_bidder] = true;
+    nonces[_bidder][bidAction.ADDITIONAL] += 1;
     }
 
-
     //대금미납시 진행
-    function handleUnpaidWinner(uint64 _tradeNum, address prevWinner) internal 
-    {
+    function handleUnpaidWinner(uint64 _tradeNum, address prevWinner) internal {
     address[] memory bidders = bidderList[_tradeNum];
     address newWinner;
     uint80 newHighest = 0;
-    uint64 newTime = 0;
+    uint64 newTime = type(uint64).max;
 
     for (uint i = 0; i < bidders.length; i++) {
         address bidder = bidders[i];
@@ -286,8 +314,7 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
 
         if (
             bidder != prevWinner &&
-            additionalBid[_tradeNum][bidder] &&
-            info.bidAmount > newHighest
+            additionalBid[_tradeNum][bidder]
         ) {
             if (
                 info.bidAmount > newHighest || 
@@ -305,7 +332,6 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
         tradeInfos[_tradeNum].highestAmount = newHighest;
         tradeInfos[_tradeNum].highestTime = newTime;
 
-        // 정시 기준 30일 추가
         uint256 nowUTC = block.timestamp;
         uint256 offset = 9 hours;
         uint32 newDueDate = uint32(((nowUTC + offset) / 1 days) * 1 days - offset + 30 days);
@@ -313,6 +339,10 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
 
         winnerPayment[_tradeNum][newWinner] = 0;
         winnerPayment[_tradeNum][prevWinner] = 0;
+
+        tradeStates[_tradeNum] = TradeState.PENDING_SECOND_WINNER;
+    } else {
+        tradeStates[_tradeNum] = TradeState.COMPLETED;
     }
     }
 
@@ -321,8 +351,8 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
     function Withdraw(uint256 _amount, address _to, uint256 nonce, bytes memory signature) external 
     {
     require(verifySignatureForWithdraw(_amount, _to, nonce, signature), "Invalid signature");
-    require(nonce == nonces[_to], "Invalid nonce");
-    nonces[_to] += 1;
+    require(nonce == nonces[_to][bidAction.WITHDRAW], "Invalid nonce");
+    nonces[_to][bidAction.WITHDRAW] += 1;
     require(userBalance[_to] >= _amount, "Insufficient balance");
 
     userBalance[_to] -= _amount;
@@ -345,4 +375,4 @@ contract escrow is Ownable, KeeperCompatibleInterface, ERC721URIStorage{
     {
         return userBalance[_user];
     }
-}
+    }
