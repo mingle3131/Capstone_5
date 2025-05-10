@@ -10,3 +10,7 @@ class Profile(models.Model):
     id_number = models.CharField(max_length=20, blank=True)
     phone = models.CharField(max_length=20, blank=True)
     address = models.CharField(max_length=200, blank=True)
+    balance = models.PositiveIntegerField(default=0)  # 예치금 (원 단위)
+
+    def __str__(self):
+        return f"{self.user.username}의 프로필"
