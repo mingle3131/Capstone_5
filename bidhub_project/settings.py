@@ -142,4 +142,7 @@ AUTH_USER_MODEL = 'accounts.User'
 
 NAVER_MAPS_CLIENT_ID = 'nekr3y57xu'
 NAVER_MAPS_CLIENT_SECRET = 'Fgnd111Zt4BTLVAd6cH1Ikr5rmVDsrTCvUkf9Gc3'
+<<<<<<< Updated upstream:bidhub_project/settings.py
+>>>>>>> Stashed changes:backend/backend/settings.py
+=======
 >>>>>>> Stashed changes:backend/backend/settings.py

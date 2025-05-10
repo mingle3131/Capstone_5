@@ -1,0 +1,249 @@
+{% extends 'layout.html' %}
+{% load static %}
+
+{% block extra_css %}
+{{ block.super }}
+<link rel="stylesheet" href="{% static 'css/property_detail.css' %}">
+<link rel="stylesheet" href="{% static 'css/tender.css' %}">
+<!-- Add Naver Maps API script -->
+<script type="text/javascript" src="https://oapi.map.naver.com/openapi/v3/maps.js?ncpClientId={{ naver_maps_client_id }}&callback=initMap"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container property-detail-container">
+  <h1>매물 상세 정보 (ID: {{ property_id }})</h1>
+
+  <div class="detail-grid">
+    <div class="detail-grid-left">
+      <section class="photo-section card">
+        <h2>사진</h2>
+        <div class="left-section">
+          <div class="main-image-container">
+            <button class="arrow left" onclick="prevImage()">&#10094;</button>
+            <img id="mainImage" src="{% if main_image_url %}{{ main_image_url }}{% else %}{% static 'img/ex/01.png' %}{% endif %}" alt="메인 이미지" />
+            <button class="arrow right" onclick="nextImage()">&#10095;</button>
+            <div id="image-counter">1 / {{ image_paths|length|default:1 }}</div>
+          </div>
+          <div class="thumbnail-row">
+            {% for image_path in image_paths %}
+              <img src="{{ image_path }}" class="thumb" onclick="setMainImage({{ forloop.counter0 }})" />
+            {% empty %}
+              <!-- Default static thumbnails if dynamic ones aren't provided -->
+              <img src="{% static 'img/ex/01.png' %}" class="thumb" onclick="setMainImage(0)" />
+              <img src="{% static 'img/ex/02.png' %}" class="thumb" onclick="setMainImage(1)" />
+            {% endfor %}
+          </div>
+        </div>
+      </section>
+
+      <section class="map-section card">
+        <h2>위치 정보 (지도)</h2>
+        <div id="map" style="width:100%;height:400px;"></div>
+      </section>
+    </div>
+
+    <div class="detail-grid-right">
+      <section class="info-table-section card">
+        <h2>기본 정보</h2>
+        <table class="detail-table">
+          <tr><th>사건번호</th><td>{{ property_info.case_number|default:"-" }}</td><th>사건명</th><td>{{ property_info.case_name|default:"-" }}</td></tr>
+          <tr><th>법원</th><td>{{ property_info.court|default:"-" }}</td><th>접수일자</th><td>{{ property_info.receipt_date|date:"Y/m/d"|default:"-" }}</td></tr>
+          <tr><th>담당계</th><td>{{ property_info.responsible_dept|default:"-" }}</td><th>청구금액</th><td>{{ property_info.claim_amount|default:"-" }}</td></tr>
+          <tr><th>항고여부</th><td>{{ property_info.appeal_status_display|default:"-" }}</td><th>최저입찰가</th><td>{{ property_info.min_bid_price|default:"-" }}</td></tr>
+        </table>
+      </section>
+
+      <section class="info-table-section card">
+        <h2>소재지 정보</h2>
+        <table class="detail-table">
+          <tr><th>소재지</th><td colspan="3">{{ location_info.address|default:"-" }}</td></tr>
+          <tr><th>배당요구종기일</th><td>{{ location_info.claim_end_date|date:"Y/m/d"|default:"-" }}</td><th>사건번호</th><td>{{ location_info.case_number|default:"-" }}</td></tr>
+        </table>
+      </section>
+      
+      <section class="specification-section card">
+        <h2>매물 관련 상세 명세서</h2>
+        <div class="spec-documents">
+          <div class="spec-document-card">
+            <div class="document-icon">📋</div>
+            <h3>매각물건명세서</h3>
+            <p>매각물건의 기본 정보와 상세 내용을 확인할 수 있습니다.</p>
+            <a href="{{ document_urls.specification_url|default:'#' }}" onclick="window.open(this.href, '_blank'); return false;" class="btn-spec">
+              <i class="fas fa-file-alt"></i> 명세서 보기
+            </a>
+          </div>
+
+          <div class="spec-document-card">
+            <div class="document-icon">🔍</div>
+            <h3>현황조사서</h3>
+            <p>매각물건의 현재 상태와 주변 환경에 대한 조사 내용입니다.</p>
+            <a href="{{ document_urls.status_report_url|default:'#' }}" onclick="window.open(this.href, '_blank'); return false;" class="btn-spec">
+              <i class="fas fa-search"></i> 조사서 보기
+            </a>
+          </div>
+
+          <div class="spec-document-card">
+            <div class="document-icon">💰</div>
+            <h3>감정평가서</h3>
+            <p>전문 감정평가기관의 물건 가치 평가 결과입니다.</p>
+            <a href="{{ document_urls.appraisal_url|default:'#' }}" onclick="window.open(this.href, '_blank'); return false;" class="btn-spec">
+              <i class="fas fa-chart-line"></i> 평가서 보기
+            </a>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+  <section class="info-table-section card">
+    <h2>입찰 내역 현황</h2>
+    <div class="table-responsive">
+      <table class="detail-table full-width-table">
+        <thead>
+          <tr>
+            <th>번호</th><th>내용</th><th>구분</th><th>최저가</th><th>결과</th>
+            <th>감정가/최저가/보증금(10%)</th>
+            <th>매각기일</th><th>잔금기일</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in bidding_history %}
+          <tr>
+            <td>{{ item.id|default:forloop.counter }}</td>
+            <td><a href="{{ item.url|default:'#' }}">{{ item.link_text|default:"-" }}</a></td>
+            <td>{{ item.type|default:"-" }}</td>
+            <td>{{ item.min_price|default:"-" }}</td>
+            <td>{{ item.status|default:"-" }}</td>
+            <td>{{ item.price_details|default:"-" }}</td>
+            <td>{{ item.auction_date|date:"Y/m/d (H:i)"|default:"-" }}</td>
+            <td>{{ item.due_date|default:"-" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="8">입찰 내역이 없습니다.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="info-table-section card">
+    <h2>건물 상세 및 현황</h2>
+    <div class="table-responsive">
+      <table class="detail-table full-width-table">
+        <thead>
+          <tr><th>목록구분</th><th>상세내역</th><th>비고</th><th>사건번호</th></tr>
+        </thead>
+        <tbody>
+          {% for item in building_details %}
+          <tr>
+            <td>{{ item.category|default:"-" }}</td>
+            <td style="white-space: pre-line;">{{ item.description|default:"-" }}</td>
+            <td>{{ item.remarks|default:"-" }}</td>
+            <td>{{ item.case_number|default:"-" }}</td>
+          </tr>
+          {% empty %}
+            <tr><td colspan="4">건물 상세 내역이 없습니다.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="info-table-section card">
+    <h2>등기 현황 및 권리관계 (당사자 정보)</h2>
+    <div class="table-responsive">
+      <table class="detail-table full-width-table">
+        <thead>
+          <tr><th>당사자구분</th><th>당사자명</th><th>사건번호</th><th>비고</th></tr>
+        </thead>
+        <tbody>
+          {% for item in interested_parties %}
+          <tr>
+            <td>{{ item.type|default:"-" }}</td>
+            <td>{{ item.name|default:"-" }}</td>
+            <td>{{ item.case_number|default:"-" }}</td>
+            <td>{{ item.remarks|default:"-" }}</td>
+          </tr>
+          {% empty %}
+          <tr><td colspan="4">당사자 정보가 없습니다.</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div>
+
+<script>
+function initMap() {
+    var mapOptions = {
+        center: new naver.maps.LatLng({{ map_latitude|default:"37.5665" }}, {{ map_longitude|default:"126.9780" }}),
+        zoom: 15
+    };
+
+    var map = new naver.maps.Map('map', mapOptions);
+
+    var marker = new naver.maps.Marker({
+        position: new naver.maps.LatLng({{ map_latitude|default:"37.5665" }}, {{ map_longitude|default:"126.9780" }}),
+        map: map
+    });
+}
+
+document.addEventListener("DOMContentLoaded", function () {
+    let imagePaths = [
+        {% for image_path in image_paths %}
+            "{{ image_path }}",
+        {% empty %}
+            "{% static 'img/ex/01.png' %}",
+            "{% static 'img/ex/02.png' %}",
+            "{% static 'img/ex/03.png' %}",
+            "{% static 'img/ex/04.png' %}",
+            "{% static 'img/ex/05.png' %}"
+        {% endfor %}
+    ];
+    // Remove trailing comma if imagePaths was populated dynamically
+    if (imagePaths.length > 0 && imagePaths[imagePaths.length-1] === "") {
+        imagePaths.pop();
+    }
+    if (imagePaths.length > 0 && imagePaths[imagePaths.length-1].endsWith(",")) {
+        imagePaths[imagePaths.length-1] = imagePaths[imagePaths.length-1].slice(0, -1);
+    }
+
+    let currentIndex = 0;
+    const mainImageEl = document.getElementById("mainImage");
+    const imageCounter = document.getElementById("image-counter");
+
+    function updateImage() {
+        if (mainImageEl && imagePaths.length > 0) {
+            mainImageEl.src = imagePaths[currentIndex];
+            if (imageCounter) {
+                imageCounter.textContent = `${currentIndex + 1} / ${imagePaths.length}`;
+            }
+        }
+    }
+
+    window.setMainImage = function(index) {
+        if (index >= 0 && index < imagePaths.length) {
+            currentIndex = index;
+            updateImage();
+        }
+    }
+
+    window.prevImage = function() {
+        currentIndex = (currentIndex - 1 + imagePaths.length) % imagePaths.length;
+        updateImage();
+    }
+
+    window.nextImage = function() {
+        currentIndex = (currentIndex + 1) % imagePaths.length;
+        updateImage();
+    }
+
+    if (mainImageEl && imagePaths.length > 0) {
+        updateImage(); 
+    } else if (mainImageEl) {
+        if(imageCounter) imageCounter.style.display = 'none';
+    }
+});
+</script>
+{% endblock %} 
