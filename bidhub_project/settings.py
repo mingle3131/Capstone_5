@@ -126,3 +126,20 @@ STATICFILES_DIRS = [
 # https://docs.djangoproject.com/en/5.1/ref/settings/#default-auto-field
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+<<<<<<< Updated upstream:bidhub_project/settings.py
+=======
+
+# CORS Settings
+CORS_ALLOWED_ORIGINS = [
+    'http://127.0.0.1:5500',  # Your frontend development server origin
+    # Add other origins if needed (e.g., your production frontend URL)
+]
+
+# Optional: Allow all origins (less secure, use only for testing)
+# CORS_ALLOW_ALL_ORIGINS = True
+
+AUTH_USER_MODEL = 'accounts.User'
+
+NAVER_MAPS_CLIENT_ID = 'nekr3y57xu'
+NAVER_MAPS_CLIENT_SECRET = 'Fgnd111Zt4BTLVAd6cH1Ikr5rmVDsrTCvUkf9Gc3'
+>>>>>>> Stashed changes:backend/backend/settings.py
