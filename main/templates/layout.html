@@ -41,7 +41,7 @@
           <li class="menu-item">
             <a href="#">입찰준비</a>
             <ul class="submenu">
-              <li><a href="#">입찰표작성</a></li>
+              <li><a href="{% url 'bidform' %}">입찰표작성</a></li>
               <li><a href="{% url 'charge' %}">예치금충전</a></li>
             </ul>
           </li>
@@ -60,21 +60,32 @@
               <li><a href="#">즐겨찾기목록</a></li>
               <li><a href="#">입찰기본설정</a></li>
               <li><a href="{% url 'auto_bid' %}">자동입찰설정</a></li>
-              <li><a href="#">마이페이지 →</a></li>
+              <li><a href="{% url 'mypage' %}">마이페이지 →</a></li>
             </ul>
           </li>
         </ul>
       </div>
+
+      <!-- 로그인 여부에 따른 버튼 분기 -->
       <div class="user-actions">
-        <button class="btn signup-btn">회원가입</button>
-        <a href="{% url 'login' %}"><button class="btn login-btn">로그인</button></a>
+        {% if user.is_authenticated %}
+          <span>{{ user.username }}님</span>
+          <span class="wallet"><i class="fa-solid fa-won-sign"></i> 예치금 {{ user.profile.balance|default:"0" }}원</span>
+          <a href="{% url 'mypage' %}">마이페이지</a>
+          <form method="POST" action="{% url 'account_logout' %}" style="display:inline;">
+            {% csrf_token %}
+            <button type="submit" class="logout-btn">로그아웃</button>
+          </form>
+        {% else %}
+          <a href="{% url 'account_signup' %}" class="btn signup-btn">회원가입</a>
+          <a href="{% url 'account_login' %}"><button class="btn login-btn">로그인</button></a>
+        {% endif %}
       </div>
     </nav>
   </header>
 
   <!-- Main Content -->
   <main class="main-content">
-    <!-- 각 페이지의 본문 내용이 들어가는 곳 -->
     {% block content %}
     {% endblock %}
   </main>
@@ -138,5 +149,4 @@
   <script src="https://cdn.jsdelivr.net/npm/ethers@5.7.2/dist/ethers.umd.min.js"></script>
   {% block extra_js %}{% endblock %}
 </body>
-
 </html>
