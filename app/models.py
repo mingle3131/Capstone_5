@@ -88,7 +88,7 @@ class Casedetails(models.Model):
     appeal_status = models.IntegerField(blank=True, null=True)
 
     class Meta:
-        managed = False
+        managed = True
         db_table = 'casedetails'
 
 
@@ -99,7 +99,7 @@ class Claimdetails(models.Model):
     case = models.ForeignKey(Casedetails, models.DO_NOTHING, blank=True, null=True)
 
     class Meta:
-        managed = False
+        managed = True
         db_table = 'claimdetails'
 
 
@@ -164,7 +164,7 @@ class Itemdetails(models.Model):
     case = models.ForeignKey('Casedetails', models.DO_NOTHING, blank=True, null=True)
 
     class Meta:
-        managed = False
+        managed = True
         db_table = 'itemdetails'
 
 
@@ -176,7 +176,7 @@ class Listingdetails(models.Model):
     case = models.ForeignKey(Casedetails, models.DO_NOTHING, blank=True, null=True)
 
     class Meta:
-        managed = False
+        managed = True
         db_table = 'listingdetails'
 
 
@@ -187,5 +187,5 @@ class Partydetails(models.Model):
     case = models.ForeignKey(Casedetails, models.DO_NOTHING, blank=True, null=True)
 
     class Meta:
-        managed = False
+        managed = True
         db_table = 'partydetails'
