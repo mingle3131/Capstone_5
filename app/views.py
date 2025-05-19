@@ -1,64 +1,64 @@
 from rest_framework.decorators import api_view
 from rest_framework.response import Response
-from .models import Itemdetails
-from .serializers import ItemdetailsSerializer
+from .models import AuctionItem, AuctionCase
+from .serializers import AuctionItemSerializer, AuctionCaseSerializer
 from django.http import JsonResponse
-from .models import Casedetails
-from .serializers import CasedetailsSerializer
 from django.core.files.storage import default_storage
 from django.core.files.base import ContentFile
 import os
 
 @api_view(['GET'])
 def all_cases(request):
-    cases = Casedetails.objects.all()
-    serializer = CasedetailsSerializer(cases, many=True)
+    cases = AuctionCase.objects.all()
+    serializer = AuctionCaseSerializer(cases, many=True)
     return Response(serializer.data)
 
 
 def auction_detail(request, item_id):
-    item = Itemdetails.objects.get(item_id=item_id)
-    case = item.case
+    try:
+        item = AuctionItem.objects.get(item_number=item_id)
+        case = item.case_number
 
-    data = {
-        'item': {
-            'item_id': item.item_id,
-            'auction_notice_url': item.auction_notice_url,
-            'item_purpose': item.item_purpose,
-            'valuation_amount': float(item.valuation_amount),
-            'item_status': item.item_status,
-            'court_date': item.court_date,
-        },
-        'case': {
-            'case_id': case.case_id,
-            'case_name': case.case_name,
-            'court_name': case.court_name,
-            'filing_date': case.filing_date,
-            'start_date': case.start_date,
-            'claim_amount': float(case.claim_amount),
-        },
-        'claims': list(case.claimdetails_set.values('list_id', 'address', 'claim_end_date')),
-        'parties': list(case.partydetails_set.values('party_id', 'party_type', 'party_name')),
-        'listings': list(case.listingdetails_set.values('list_id', 'address', 'list_type', 'remarks')),
-    }
+        data = {
+            'item': {
+                'item_number': item.item_number,
+                'item_spec_url': item.item_spec_url,
+                'item_purpose': item.item_purpose,
+                'valuation_amount': item.valuation_amount,
+                'item_status': item.item_status,
+                'auction_date': item.auction_date,
+            },
+            'case': {
+                'case_number': case.case_number,
+                'case_name': case.case_name,
+                'court_name': case.court_name,
+                'filing_date': case.filing_date,
+                'claim_amount': case.claim_amount,
+            },
+            'claims': list(case.claimdistribution_set.values('id', 'location', 'claim_deadline')),
+            'parties': list(case.auctionparty_set.values('id', 'party_type', 'party_name')),
+            'listings': list(case.propertylisting_set.values('id', 'location', 'listing_type', 'details')),
+        }
 
-    return JsonResponse(data)
+        return JsonResponse(data)
+    except AuctionItem.DoesNotExist:
+        return JsonResponse({'error': '해당 물건을 찾을 수 없습니다.'}, status=404)
 
 def auction_list(request):
     court_name = request.GET.get('court_name')
     
-    items = Itemdetails.objects.select_related('case').all()
+    items = AuctionItem.objects.select_related('case_number').all()
 
     if court_name:
-        items.filter(case__court_name=court_name)
+        items = items.filter(case_number__court_name=court_name)
 
     data = []
     for item in items:
         data.append({
-            'case_id': item.case.case_id if item.case else None,
-            'min_bid': float(item.valuation_amount) if item.valuation_amount is not None else None,
+            'case_number': item.case_number.case_number if item.case_number else None,
+            'min_bid': item.valuation_amount,
             'auction_failures': item.auction_failures,
-            'deadline': item.court_date.strftime('%Y-%m-%d %H:%M') if item.court_date else None,
+            'deadline': item.auction_date.strftime('%Y-%m-%d %H:%M') if item.auction_date else None,
         })
 
     return JsonResponse(data, safe=False)
@@ -66,20 +66,26 @@ def auction_list(request):
 @api_view(['POST'])
 def upload_property_image(request, item_id):
     try:
-        item = Itemdetails.objects.get(item_id=item_id)
+        item = AuctionItem.objects.get(item_number=item_id)
         image_file = request.FILES.get('image')
         
         if image_file:
             # 이미지 파일 저장
             path = default_storage.save(f'property_images/{item_id}_{image_file.name}', ContentFile(image_file.read()))
-            # 이미지 필드 업데이트
-            item.item_image = path
+            
+            # 이미지 URL 저장
+            image_url = default_storage.url(path)
+            if item.item_image_url:
+                item.item_image_url = image_url
+            else:
+                item.item_image_url = image_url
+                
             item.save()
             
             return Response({
                 'success': True,
                 'message': '이미지가 성공적으로 업로드되었습니다.',
-                'image_url': default_storage.url(path)
+                'image_url': image_url
             })
         else:
             return Response({
@@ -87,7 +93,7 @@ def upload_property_image(request, item_id):
                 'message': '이미지 파일이 제공되지 않았습니다.'
             }, status=400)
             
-    except Itemdetails.DoesNotExist:
+    except AuctionItem.DoesNotExist:
         return Response({
             'success': False,
             'message': '해당 매물을 찾을 수 없습니다.'
@@ -101,7 +107,7 @@ def upload_property_image(request, item_id):
 @api_view(['POST'])
 def bulk_upload_images(request, item_id):
     try:
-        item = Itemdetails.objects.get(item_id=item_id)
+        item = AuctionItem.objects.get(item_number=item_id)
         images = request.FILES.getlist('images')
         
         if not images:
@@ -137,7 +143,7 @@ def bulk_upload_images(request, item_id):
             'uploaded_images': uploaded_images
         })
             
-    except Itemdetails.DoesNotExist:
+    except AuctionItem.DoesNotExist:
         return Response({
             'success': False,
             'message': '해당 매물을 찾을 수 없습니다.'

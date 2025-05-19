@@ -1,5 +1,6 @@
 from django.db import models
 from django.conf import settings
+from app.models import AuctionCase, AuctionItem
 
 # Create your models here.
 # from django.contrib.auth.models import User # Remove direct import
@@ -18,3 +19,16 @@ class Profile(models.Model):
         # Access username through the related user object
         # Make sure your custom user model ('accounts.User') has a 'username' field or similar identifier
         return f"{self.user.username}의 프로필"
+
+class FavoriteProperty(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    auction_item = models.ForeignKey(AuctionItem, on_delete=models.CASCADE)
+    case_number = models.CharField(max_length=100)
+    usage = models.CharField(max_length=50, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    class Meta:
+        unique_together = ('user', 'auction_item')
+        
+    def __str__(self):
+        return f"{self.user.username}의 관심물건 - {self.case_number}"

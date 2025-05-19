@@ -77,32 +77,6 @@ class AuthUserUserPermissions(models.Model):
         unique_together = (('user', 'permission'),)
 
 
-class Casedetails(models.Model):
-    case_id = models.IntegerField(primary_key=True)
-    case_name = models.CharField(max_length=255, blank=True, null=True)
-    court_name = models.CharField(max_length=255, blank=True, null=True)
-    filing_date = models.DateField(blank=True, null=True)
-    start_date = models.DateField(blank=True, null=True)
-    responsible_dept = models.CharField(max_length=255, blank=True, null=True)
-    claim_amount = models.DecimalField(max_digits=15, decimal_places=2, blank=True, null=True)
-    appeal_status = models.IntegerField(blank=True, null=True)
-
-    class Meta:
-        managed = True
-        db_table = 'casedetails'
-
-
-class Claimdetails(models.Model):
-    list_id = models.AutoField(primary_key=True)
-    address = models.CharField(max_length=255, blank=True, null=True)
-    claim_end_date = models.DateField(blank=True, null=True)
-    case = models.ForeignKey(Casedetails, models.DO_NOTHING, blank=True, null=True)
-
-    class Meta:
-        managed = True
-        db_table = 'claimdetails'
-
-
 class DjangoAdminLog(models.Model):
     action_time = models.DateTimeField()
     object_id = models.TextField(blank=True, null=True)
@@ -148,44 +122,86 @@ class DjangoSession(models.Model):
         db_table = 'django_session'
 
 
-class Itemdetails(models.Model):
-    item_id = models.IntegerField(primary_key=True)
-    auction_notice_url = models.CharField(max_length=1000, blank=True, null=True, help_text="경매공고 URL")
-    item_spec_url = models.CharField(max_length=1000, blank=True, null=True, help_text="매각물건명세서 URL")
-    status_report_url = models.CharField(max_length=1000, blank=True, null=True, help_text="현황조사서 URL")
-    appraisal_url = models.CharField(max_length=1000, blank=True, null=True, help_text="감정평가서 URL")
-    item_purpose = models.CharField(max_length=255, blank=True, null=True)
-    valuation_amount = models.DecimalField(max_digits=20, decimal_places=2, blank=True, null=True)
-    item_note = models.CharField(max_length=255, blank=True, null=True)
-    item_status = models.CharField(max_length=255, blank=True, null=True)
-    court_date = models.DateTimeField(blank=True, null=True)
-    auction_failures = models.IntegerField(default=0, blank=True, null=True)
-    item_image = models.ImageField(upload_to='property_images/', blank=True, null=True)
-    case = models.ForeignKey('Casedetails', models.DO_NOTHING, blank=True, null=True)
+# 경매 사건 정보 (auction_data 초안5 (1).CSV)
+class AuctionCase(models.Model):
+    case_number = models.CharField(max_length=100, primary_key=True, help_text="사건번호")
+    case_name = models.CharField(max_length=255, blank=True, null=True, help_text="사건명")
+    court_name = models.CharField(max_length=255, blank=True, null=True, help_text="법원")
+    filing_date = models.DateField(blank=True, null=True, help_text="접수일자")
+    responsible_dept = models.CharField(max_length=255, blank=True, null=True, help_text="담당계")
+    claim_amount = models.CharField(max_length=255, blank=True, null=True, help_text="청구금액")
+    appeal_status = models.BooleanField(default=False, blank=True, null=True, help_text="항고여부")
+    minimum_bid_price = models.CharField(max_length=255, blank=True, null=True, help_text="최저입찰가")
 
     class Meta:
         managed = True
-        db_table = 'itemdetails'
+        db_table = 'auction_case'
 
 
-class Listingdetails(models.Model):
-    list_id = models.AutoField(primary_key=True)
-    address = models.CharField(max_length=255, blank=True, null=True)
-    list_type = models.CharField(max_length=255, blank=True, null=True)
-    remarks = models.CharField(max_length=255, blank=True, null=True)
-    case = models.ForeignKey(Casedetails, models.DO_NOTHING, blank=True, null=True)
-
+# 배당 정보 (auction_data 초안5 (2).CSV)
+class ClaimDistribution(models.Model):
+    id = models.AutoField(primary_key=True)
+    case_number = models.ForeignKey(AuctionCase, on_delete=models.CASCADE, to_field='case_number', db_column='case_number', help_text="사건번호") 
+    location = models.TextField(blank=True, null=True, help_text="소재지")
+    claim_deadline = models.DateField(blank=True, null=True, help_text="배당요구종기일")
+    
     class Meta:
         managed = True
-        db_table = 'listingdetails'
+        db_table = 'claim_distribution'
 
 
-class Partydetails(models.Model):
-    party_id = models.AutoField(primary_key=True)
-    party_type = models.CharField(max_length=255, blank=True, null=True)
-    party_name = models.CharField(max_length=255, blank=True, null=True)
-    case = models.ForeignKey(Casedetails, models.DO_NOTHING, blank=True, null=True)
-
+# 물건 정보 (auction_data 초안5 (3).CSV)
+class AuctionItem(models.Model):
+    item_number = models.IntegerField(help_text="물건번호")
+    case_number = models.ForeignKey(AuctionCase, on_delete=models.CASCADE, to_field='case_number', db_column='case_number', help_text="사건번호")
+    item_spec_url = models.CharField(max_length=1000, blank=True, null=True, help_text="매각물건명세서URL")
+    item_purpose = models.CharField(max_length=255, blank=True, null=True, help_text="물건용도")
+    valuation_amount = models.CharField(max_length=255, blank=True, null=True, help_text="감정평가액")
+    item_note = models.CharField(max_length=255, blank=True, null=True, help_text="물건비고")
+    item_status = models.CharField(max_length=255, blank=True, null=True, help_text="물건상태")
+    auction_date = models.DateTimeField(blank=True, null=True, help_text="매각기일")
+    auction_failures = models.IntegerField(default=0, blank=True, null=True, help_text="유찰횟수")
+    item_image_url = models.URLField(blank=True, null=True, help_text="이미지URL")
+    
+    # 추가 매각기일 정보
+    auction_date_1 = models.DateTimeField(blank=True, null=True, help_text="매각기일 1차")
+    decision_date_1 = models.DateTimeField(blank=True, null=True, help_text="매각결정기일 1차")
+    auction_date_2 = models.DateTimeField(blank=True, null=True, help_text="매각기일 2차")
+    decision_date_2 = models.DateTimeField(blank=True, null=True, help_text="매각결정기일 2차")
+    auction_date_3 = models.DateTimeField(blank=True, null=True, help_text="매각기일 3차")
+    decision_date_3 = models.DateTimeField(blank=True, null=True, help_text="매각결정기일 3차")
+    auction_date_4 = models.DateTimeField(blank=True, null=True, help_text="매각기일 4차")
+    decision_date_4 = models.DateTimeField(blank=True, null=True, help_text="매각결정기일 4차")
+    
     class Meta:
         managed = True
-        db_table = 'partydetails'
+        db_table = 'auction_item'
+        unique_together = (('item_number', 'case_number'),)
+
+
+# 목록 정보 (auction_data 초안5 (4).CSV)
+class PropertyListing(models.Model):
+    id = models.AutoField(primary_key=True)
+    case_number = models.ForeignKey(AuctionCase, on_delete=models.CASCADE, to_field='case_number', db_column='case_number', help_text="사건번호")
+    location = models.TextField(blank=True, null=True, help_text="소재지")
+    listing_type = models.CharField(max_length=100, blank=True, null=True, help_text="목록구분")
+    details = models.TextField(blank=True, null=True, help_text="상세내역")
+    final_result = models.CharField(max_length=100, blank=True, null=True, help_text="종국결과")
+    final_date = models.DateField(blank=True, null=True, help_text="종국일자")
+    
+    class Meta:
+        managed = True
+        db_table = 'property_listing'
+
+
+# 당사자 정보 (auction_data 초안5 (5).CSV)
+class AuctionParty(models.Model):
+    id = models.AutoField(primary_key=True)
+    case_number = models.ForeignKey(AuctionCase, on_delete=models.CASCADE, to_field='case_number', db_column='case_number', help_text="사건번호")
+    party_type = models.CharField(max_length=100, blank=True, null=True, help_text="당사자구분")
+    party_name = models.CharField(max_length=255, blank=True, null=True, help_text="당사자명")
+    remarks = models.CharField(max_length=255, blank=True, null=True, help_text="비고")
+    
+    class Meta:
+        managed = True
+        db_table = 'auction_party'

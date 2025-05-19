@@ -1,33 +1,33 @@
 from rest_framework import serializers
-from .models import Casedetails, Itemdetails, Claimdetails, Partydetails, Listingdetails
+from .models import AuctionCase, AuctionItem, ClaimDistribution, AuctionParty, PropertyListing
 
 
-class ClaimdetailsSerializer(serializers.ModelSerializer):
+class ClaimDistributionSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Claimdetails
+        model = ClaimDistribution
         fields = '__all__'
 
-class PartydetailsSerializer(serializers.ModelSerializer):
+class AuctionPartySerializer(serializers.ModelSerializer):
     class Meta:
-        model = Partydetails
+        model = AuctionParty
         fields = '__all__'
 
-class ListingdetailsSerializer(serializers.ModelSerializer):
+class PropertyListingSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Listingdetails
+        model = PropertyListing
         fields = '__all__'
 
-class ItemdetailsSerializer(serializers.ModelSerializer):
+class AuctionItemSerializer(serializers.ModelSerializer):
     class Meta:
-        model = Itemdetails
+        model = AuctionItem
         fields = '__all__'
 
-class CasedetailsSerializer(serializers.ModelSerializer):
-    itemdetails_set = ItemdetailsSerializer(many=True, read_only=True)
-    claimdetails_set = ClaimdetailsSerializer(many=True, read_only=True)
-    partydetails_set = PartydetailsSerializer(many=True, read_only=True)
-    listingdetails_set = ListingdetailsSerializer(many=True, read_only=True)
+class AuctionCaseSerializer(serializers.ModelSerializer):
+    auctionitem_set = AuctionItemSerializer(many=True, read_only=True)
+    claimdistribution_set = ClaimDistributionSerializer(many=True, read_only=True)
+    auctionparty_set = AuctionPartySerializer(many=True, read_only=True)
+    propertylisting_set = PropertyListingSerializer(many=True, read_only=True)
 
     class Meta:
-        model = Casedetails
+        model = AuctionCase
         fields = '__all__'

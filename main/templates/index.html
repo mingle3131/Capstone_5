@@ -44,12 +44,12 @@
         <!-- 서버 데이터 삽입 예정 -->
         {% for item in auction_items %}
           <tr>
-            <td>{{ item.case_id }}</td> {# Assuming case_id is in the related Casedetails model #}
-            <td>{{ item.min_bid }}</td> {# Assuming min_bid_price exists in Itemdetails #}
-            <td>{{ item.auction_failures|default:"-" }}</td> {# Assuming bid_count exists, provide default if not #}
-            <td>{{ item.court_date|date:"Y.m.d H:i"|default:"-" }}</td> {# Assuming deadline exists, format and provide default #}
-            <td><button class="btn-favorite">☆</button></td> {# Placeholder for favorite functionality #}
-            <td><a href="{% url 'property_detail' item.item_id %}" class="btn-bid">입찰</a></td> {# Link to detail/bidding page #}
+            <td>{{ item.case_number.case_number }}</td> 
+            <td>{{ item.valuation_amount }}</td> 
+            <td>{{ item.auction_failures|default:"-" }}</td>
+            <td>{{ item.auction_date|date:"Y.m.d H:i"|default:"-" }}</td>
+            <td><button class="btn-favorite">☆</button></td>
+            <td><a href="{% url 'property_detail' item.item_number %}" class="btn-bid">입찰</a></td>
           </tr>
         {% empty %}
           <tr>
