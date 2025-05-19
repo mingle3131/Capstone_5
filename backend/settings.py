@@ -94,7 +94,7 @@ STATICFILES_DIRS = [
 DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.mysql',
-        'NAME': 'auctiondb2',
+        'NAME': 'auctiondb',
         'USER': 'root',  # 또는 capuser
         'PASSWORD': '1q2w3e4r',
         'HOST': 'localhost',
