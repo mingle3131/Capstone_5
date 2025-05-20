@@ -203,3 +203,58 @@ body {
     background-color: #f1f5f9;
   }
   
+
+  /* 상세정보 */
+  .auction-wrapper {
+    font-family: 'Pretendard', 'Segoe UI', sans-serif;
+    max-width: 1000px;
+    margin: 40px auto;
+    padding: 0 20px;
+    color: #2c2c2c;
+  }
+  
+  .section-title {
+    font-size: 1.5rem;
+    color: #1a1a1a;
+    margin-top: 40px;
+    margin-bottom: 16px;
+    border-bottom: 2px solid #0052cc;
+    padding-bottom: 6px;
+  }
+  
+  .info-table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 30px;
+    font-size: 15px;
+    background-color: #fff;
+    box-shadow: 0 0 0 1px #e0e0e0;
+  }
+  
+  .info-table th,
+  .info-table td {
+    border: 1px solid #ddd;
+    padding: 12px 10px;
+    vertical-align: top;
+  }
+  
+  .info-table th {
+    background-color: #f7f9fc;
+    text-align: left;
+    font-weight: 600;
+    color: #333;
+    white-space: nowrap;
+  }
+  
+  .info-table td {
+    color: #555;
+    line-height: 1.5;
+  }
+  
+  .info-table .long-text {
+    line-height: 1.7;
+    font-size: 14px;
+    color: #444;
+    background-color: #fdfdfd;
+  }
+  
