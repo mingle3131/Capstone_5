@@ -74,10 +74,11 @@ def charge(request):
 
     return render(request, 'charge.html', {'balance': profile.balance if profile else 0})
 
-def property_detail(request, property_id):
+def property_detail(request, case_number):
     try:
-        item_details = AuctionItem.objects.get(item_number=property_id)
-        case = item_details.case_number
+        # Try to find the auction case with the provided case number
+        case = get_object_or_404(AuctionCase, case_number=case_number)
+        item_details = AuctionItem.objects.filter(case_number=case).first()
         
         # Get related data for display
         claim_distribution = ClaimDistribution.objects.filter(case_number=case).first()
@@ -177,7 +178,7 @@ def property_detail(request, property_id):
                     image_paths.append(url.strip())
         
         context = {
-            'property_id': property_id,
+            'property_id': case_number,
             'property_info': property_info,
             'item_details': item_details,
             'case': case,

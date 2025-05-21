@@ -12,7 +12,7 @@ urlpatterns = [
     path('mypage/', views.mypage, name='mypage'),
     path('bidform/', views.bidform, name='bidform'),
     path('bidform/submit/', views.bid_submit, name='bid_submit'),
-    path('detail/<int:property_id>/', views.property_detail, name='property_detail'),
+    path('detail/<str:case_number>/', views.property_detail, name='property_detail'),
     path('api/favorites/', views.get_favorite_properties, name='get_favorites'), #즐겨찾기
     # path('logout/', django.contrib.auth.views.LogoutView.as_view(), name='logout'), # Removed
 ]

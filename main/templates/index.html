@@ -49,7 +49,7 @@
             <td>{{ item.auction_failures|default:"-" }}</td>
             <td>{{ item.auction_date|date:"Y.m.d H:i"|default:"-" }}</td>
             <td><button class="btn-favorite">☆</button></td>
-            <td><a href="{% url 'property_detail' item.item_number %}" class="btn-bid">입찰</a></td>
+            <td><a href="{% url 'property_detail' item.case_number.case_number %}" class="btn-bid">입찰</a></td>
           </tr>
         {% empty %}
           <tr>
