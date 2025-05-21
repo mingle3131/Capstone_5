@@ -40,6 +40,12 @@ def bid_submit(request):
         return redirect('bidform')  # 제출 후 다시 폼 페이지로 이동
     return redirect('bidform')  # GET으로 접근하면 다시 폼 페이지로
 
+def bid_history(request):
+    return render(request, 'bid_history.html') 
+
+def refund(request):
+    return render(request, 'refund.html') 
+
 @login_required
 def charge(request):
     if request.method == 'POST':

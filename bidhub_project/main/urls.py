@@ -14,5 +14,7 @@ urlpatterns = [
     path('bidform/submit/', views.bid_submit, name='bid_submit'),
     path('logout/', django.contrib.auth.views.LogoutView.as_view(), name='logout'),
     path('mypage/', views.mypage, name='mypage'),
+    path('bid_history/', views.bid_history, name='bid_history'),
+    path('refund/', views.refund, name='refund'),
 ]
 
