@@ -11,7 +11,7 @@
 <li><a href="#">보증금반환현황조회</a></li>
 <li><a href="#">즐겨찾기목록</a></li>
 <li><a href="#">입찰기본설정</a></li>
-<li><a href="#">자동입찰설정</a></li>
+<li><a href="{% url 'auto_bid' %}">자동입찰설정</a></li>
 <li><a href="{% url 'mypage' %}">마이페이지</a></li>
 {% endblock %}
 
@@ -92,13 +92,13 @@
   <div class="search-group">
     <label for="bidAmount1">입찰가 입력</label>
     <div class="input-wrapper">
-    <input type="number" id="bidAmount1" name="bidAmount1" class="input-field price" required /><span
+    <input type="number" id="bidAmount1" name="bidAmount1" class="input-field price" min="1" required /><span
     class="case-type">원</span>
   </div>
 
     <label for="bidAmount2">입찰가 확인</label>
     <div class="input-wrapper">
-    <input type="number" id="bidAmount2" name="bidAmount2" class="input-field price" required /><span
+    <input type="number" id="bidAmount2" name="bidAmount2" class="input-field price" min="1" required /><span
     class="case-type">원</span>
     </div>
   </div>
